@@ -1,13 +1,21 @@
 #!/bin/sh
 # Authenticated admin CGI (BusyBox httpd). Routes by SCRIPT_NAME basename.
-# shellcheck disable=SC1091
-. "$(dirname "$0")/../../wifi/paths.sh" 2>/dev/null || true
-[ -z "$CFGDIR" ] && CFGDIR=/etc/localcam
+# Do NOT source relative ../../wifi/paths.sh — CGI cwd under /tmp/.../cgi-bin breaks that.
+if [ -z "$CFGDIR" ]; then
+  for d in /media/mmcblk0p1/lc/etc /media/mmcblk1p1/lc/etc \
+           /media/mmcblk0p2/data/localcam/etc /media/mmcblk1p2/data/localcam/etc \
+           /etc/localcam; do
+    [ -d "$d" ] && CFGDIR=$d && break
+  done
+fi
+CFGDIR="${CFGDIR:-/etc/localcam}"
 RUNDIR="${RUNDIR:-/tmp/localcam}"
 ADMIN_CONF="$CFGDIR/admin.conf"
 SESS="$RUNDIR/admin.session"
 CSRF="$RUNDIR/csrf.token"
-mkdir -p "$CFGDIR" "$RUNDIR" 2>/dev/null || true
+mkdir -p "$RUNDIR" 2>/dev/null || true
+# CFGDIR may be on read-only root during early boot — don't fail CGI
+mkdir -p "$CFGDIR" 2>/dev/null || true
 
 json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\r\n'; }
 read_body() {
@@ -92,6 +100,16 @@ ensure_csrf() {
 
 route=$(basename "${SCRIPT_NAME:-admin}")
 case "$route" in
+  admin_csrf)
+    # Unauthenticated: seed CSRF cookie for the login form
+    csrf=$(ensure_csrf)
+    echo "Content-Type: application/json"
+    echo "Cache-Control: no-store"
+    echo "Set-Cookie: csrf=$csrf; Path=/"
+    echo ""
+    printf '{"csrf":"%s"}\n' "$csrf"
+    exit 0
+    ;;
   admin_login)
     body=$(read_body)
     require_csrf "$body" || { json_out "403 Forbidden" '{"error":"CSRF check failed"}'; exit 0; }
@@ -124,9 +142,14 @@ case "$route" in
     exit 0
     ;;
   admin_status)
-    ensure_csrf >/dev/null
+    csrf=$(ensure_csrf)
     if ! session_ok; then
-      json_out "401 Unauthorized" '{"error":"auth required"}'
+      echo "Status: 401 Unauthorized"
+      echo "Content-Type: application/json"
+      echo "Cache-Control: no-store"
+      echo "Set-Cookie: csrf=$csrf; Path=/"
+      echo ""
+      echo '{"error":"auth required"}'
       exit 0
     fi
     st=$(cat "$RUNDIR/wifi.state" 2>/dev/null || echo unknown)

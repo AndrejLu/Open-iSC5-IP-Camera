@@ -68,7 +68,8 @@ pre{white-space:pre-wrap;font-size:.85rem}
 (function(){
   function csrf(){var m=document.cookie.match(/(?:^|; )csrf=([^;]*)/);return m?decodeURIComponent(m[1]):'';}
   function jpost(url,body){
-    return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+    return fetch(url,{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify(Object.assign({csrf:csrf()},body||{}))})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};});});
   }
@@ -121,8 +122,11 @@ pre{white-space:pre-wrap;font-size:.85rem}
       msg.textContent=x.ok?(x.j.message||'Saved'):(x.j.error||'failed');
     });
   };
-  // Resume session if cookie present
-  fetch('/cgi-bin/admin_status').then(function(r){if(r.ok) showDash();});
+  // Seed CSRF cookie, then resume session if already signed in
+  fetch('/cgi-bin/admin_csrf',{credentials:'same-origin'})
+    .then(function(){return fetch('/cgi-bin/admin_status',{credentials:'same-origin'});})
+    .then(function(r){if(r.ok) showDash();})
+    .catch(function(){});
 })();
 </script>
 </body>

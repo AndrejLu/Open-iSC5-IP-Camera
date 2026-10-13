@@ -179,6 +179,8 @@ start_ap() {
   set_state "$mode_label"
   rm -f "$ERR_FILE"
   log "AP up: $ssid @ $AP_IP (media/SSH stopped for isolation)"
+  HTTPD_SH="$(dirname "$0")/httpd.sh"
+  [ -x "$HTTPD_SH" ] && "$HTTPD_SH" ap >>/tmp/localcam-httpd.log 2>&1 || true
 }
 
 # Write wpa_supplicant.conf atomically from wifi.conf (key=value, no shell eval of values)
@@ -290,6 +292,9 @@ wait_sta() {
       set_state "station"
       rm -f "$ERR_FILE"
       log "STA connected with IP $ip"
+      # LAN admin UI on :80 (replaces empty stock Boa page)
+      HTTPD_SH="$(dirname "$0")/httpd.sh"
+      [ -x "$HTTPD_SH" ] && "$HTTPD_SH" sta >>/tmp/localcam-httpd.log 2>&1 || true
       return 0
     fi
     if [ $((n % 15)) -eq 0 ]; then
