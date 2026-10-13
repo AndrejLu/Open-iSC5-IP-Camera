@@ -1,0 +1,37 @@
+# Files/directories to include in cloud-free rootfs (relative to assembled root)
+# Lines starting with # are comments. Trailing / = directory tree.
+
+linuxrc
+bin/
+sbin/hostapd
+sbin/wpa_supplicant
+sbin/wpa_cli
+sbin/udhcpc
+sbin/udhcpd
+lib/ld-uClibc.so.0
+lib/libc.so.0
+lib/libcrypt.so.0
+lib/libdl.so.0
+lib/libm.so.0
+lib/libpthread.so.0
+lib/librt.so.0
+lib/libgcc_s.so.1
+lib/libgpio.so
+lib/libnvram.so
+lib/libsnx_isp.so
+lib/libsnx_vc.so
+lib/libsnx_rc.so
+lib/libsnx_audio.so
+lib/libsnx_audio_aud32.so
+lib/libsnx_aec.so
+lib/libsnxconf.so
+lib/libasound.so.2
+lib/libz.so.1
+lib/modules/2.6.35.12/
+usr/sbin/udhcpd
+usr/bin/flash_erase
+# fang-sourced (copied at assemble time from SD archive):
+# usr/sbin/httpd usr/sbin/dnsd sbin/dropbear usr/bin/snx_rtsp_server
+etc/mdev.conf
+# IQ + sensor.list come from root/etc_default/firmware via assemble_rootfs.sh
+root/etc_default/

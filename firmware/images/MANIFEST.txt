@@ -1,0 +1,5 @@
+# Draft artifacts — NOT approved for internal flash
+generated=2026-10-12T21:03:16Z
+rootfs_localcam.cramfs 3608576 2a3a3686562bed8333f861b93fa9f43a836e45b97c65c6f18f69dbfa00196c1e
+sd-archive/fh_boot.tar 785920 d66fc6514dd4b9b3960f7efcaa751406a6ebee15d9225c3f21a5f38ca01d0495
+sd-archive/fh_data.tar 2981376 6e609d5ecc41bc2c3fe2ba4509471dece1b7f9099f9b44714b0ad3ba97080d4c

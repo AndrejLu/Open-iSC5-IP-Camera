@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camera Admin</title>
+<style>
+:root{--bg:#1a1f24;--fg:#e8eef2;--muted:#9aadc0;--acc:#3d9cf0;--card:#243038}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:720px;margin:0 auto;padding:1.25rem}
+h1{font-size:1.4rem}
+.grid{display:grid;gap:1rem;grid-template-columns:1fr 1fr}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+section{background:var(--card);padding:1rem;border-radius:8px}
+label{display:block;color:var(--muted);font-size:.85rem;margin:.5rem 0 .25rem}
+input,select,button{width:100%;padding:.55rem;border-radius:6px;border:1px solid #3a4a55;background:#1c252c;color:var(--fg)}
+button{background:var(--acc);border:none;font-weight:600;margin-top:.75rem;cursor:pointer}
+#preview{background:#000;min-height:180px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.9rem}
+.err{color:#e05555}
+</style>
+</head>
+<body>
+<main>
+  <h1>Camera</h1>
+  <p id="who" style="color:var(--muted)">Sign in to manage this device.</p>
+  <div id="login">
+    <label>Administrator password</label>
+    <input type="password" id="pw" autocomplete="current-password">
+    <button type="button" id="go">Sign in</button>
+    <p class="err" id="err"></p>
+  </div>
+  <div id="dash" style="display:none">
+    <div class="grid">
+      <section>
+        <h2 style="margin-top:0;font-size:1.1rem">Live preview</h2>
+        <div id="preview">MJPEG/snapshot endpoint TBD — browsers do not play RTSP.</div>
+      </section>
+      <section>
+        <h2 style="margin-top:0;font-size:1.1rem">Status</h2>
+        <pre id="st" style="white-space:pre-wrap;font-size:.85rem"></pre>
+      </section>
+    </div>
+    <section style="margin-top:1rem">
+      <h2 style="margin-top:0;font-size:1.1rem">Quick actions</h2>
+      <button type="button" id="reboot">Reboot</button>
+    </section>
+  </div>
+</main>
+<script>
+(function(){
+  function csrf(){var m=document.cookie.match(/(?:^|; )csrf=([^;]*)/);return m?decodeURIComponent(m[1]):'';}
+  document.getElementById('go').onclick=function(){
+    var pw=document.getElementById('pw').value;
+    fetch('/cgi-bin/admin_login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,csrf:csrf()})})
+      .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+      .then(function(x){
+        if(!x.ok){document.getElementById('err').textContent=x.j.error||'Login failed';return;}
+        document.getElementById('login').style.display='none';
+        document.getElementById('dash').style.display='block';
+        document.getElementById('who').textContent='Signed in';
+        return fetch('/cgi-bin/admin_status').then(function(r){return r.json();}).then(function(j){
+          document.getElementById('st').textContent=JSON.stringify(j,null,2);
+        });
+      }).catch(function(e){document.getElementById('err').textContent=String(e);});
+  };
+})();
+</script>
+</body>
+</html>

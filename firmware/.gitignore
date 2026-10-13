@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.pyc
+build/rootfs/
+progress/*.log
+sd-archive/*.tar
+sd-archive/boot/
+sd-archive/data/
+# never commit device secrets
+**/wifi.conf
+**/admin.conf
+**/*password*
+**/*.pem
+**/*token*
+tools/ffmpeg-*/
+tools/*.tgz
+tools/*.tar.xz
+private/
+progress/m4_rtsp_*
+*.mkv
+*.ts
+*.mp4

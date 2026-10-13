@@ -1,0 +1,36 @@
+# secrets / device config
+**/wifi.conf
+**/admin.conf
+**/*password*
+**/*.pem
+**/*token*
+**/*.key
+
+# backups / dumps / recordings
+**/sd-archive/
+**/uart-bridge/backups/
+**/*.bin
+**/*.img
+**/recordings/
+**/private/
+**/*.mkv
+**/*.mp4
+**/*.ts
+
+# build / venv / tools
+**/firmware/.venv/
+**/firmware/build/rootfs/
+**/firmware/tools/ffmpeg-*/
+**/*.pyc
+**/__pycache__/
+**/venv/
+**/.venv/
+firmware/stock/
+firmware/tools/
+firmware/progress/
+uart-bridge/backups/
+uart-bridge/venv/
+uart-bridge/**/*.bin
+*.cramfs
+firmware/images/*.cramfs
+firmware/images/*.bin
