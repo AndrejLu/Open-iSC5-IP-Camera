@@ -20,3 +20,5 @@ progress/m4_rtsp_*
 *.mkv
 *.ts
 *.mp4
+firmware/build/bin/wsd-lite
+firmware/build/bin/wsd-lite.stripped

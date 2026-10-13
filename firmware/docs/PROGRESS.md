@@ -28,8 +28,9 @@
 - [x] RTSP decode end-to-end + 10 min soak (`docs/RTSP_TEST_REPORT.md`)
 - [x] Admin CGI/UI (login/logout/password/wifi + CSRF) deployed
 - [x] ONVIF HTTP device/media + correct stream URI
-- [ ] ONVIF WS-Discovery + UsernameToken + NVR client
-- [ ] On-device SD recording (needs arm ffmpeg)
+- [x] ONVIF WS-Discovery unicast (`wsd-lite` ARMv5TE)
+- [ ] ONVIF UsernameToken + multicast soak + NVR client
+- [x] Host-side recording path validated; on-device ffmpeg still missing
 
 ## Milestone 5 — Cloud-free image
 - [x] Draft cramfs under budget

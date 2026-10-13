@@ -164,40 +164,24 @@ if [ -x "$FH_HTTPD" ]; then
   echo "onvif-lite: $XADDR media→$URI"
 fi
 
-# Minimal WS-Discovery Hello/ProbeMatches via Python if available, else skip
-if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
-  PY=$(command -v python3 || command -v python)
-  cat > "$RUNDIR/onvif-wsd.py" <<PY
-import socket, time
-IP="$IP"; PORT=$PORT; XADDR="$XADDR"
-MSG = """<?xml version="1.0" encoding="UTF-8"?>
-<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery" xmlns:dn="http://www.onvif.org/ver10/network/wsdl">
- <s:Header><a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches</a:Action><a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To></s:Header>
- <s:Body><d:ProbeMatches><d:ProbeMatch>
-  <a:EndpointReference><a:Address>urn:uuid:localcam-isc5</a:Address></a:EndpointReference>
-  <d:Types>dn:NetworkVideoTransmitter</d:Types>
-  <d:Scopes>onvif://www.onvif.org/name/Localcam onvif://www.onvif.org/type/Network_Video_Transmitter</d:Scopes>
-  <d:XAddrs>%s</d:XAddrs>
-  <d:MetadataVersion>1</d:MetadataVersion>
- </d:ProbeMatch></d:ProbeMatches></s:Body></s:Envelope>""" % XADDR
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-try:
-  sock.bind(("", 3702))
-except Exception:
-  raise SystemExit(0)
-sock.settimeout(1.0)
-while True:
-  try:
-    data, addr = sock.recvfrom(8192)
-  except Exception:
-    continue
-  if b"Probe" in data:
-    sock.sendto(MSG.encode(), addr)
-PY
-  "$PY" "$RUNDIR/onvif-wsd.py" >/tmp/localcam-wsd.log 2>&1 &
+# WS-Discovery via static ARMv5 wsd-lite (preferred), else skip
+WSD_BIN=""
+for c in \
+  "$(dirname "$0")/wsd-lite" \
+  "$LC_ROOT/bin/wsd-lite" \
+  /media/mmcblk0p1/lc/bin/wsd-lite \
+  /media/mmcblk1p1/lc/bin/wsd-lite \
+  /media/mmcblk0p2/data/localcam/bin/wsd-lite \
+  /media/mmcblk1p2/data/localcam/bin/wsd-lite \
+  /usr/local/bin/wsd-lite
+do
+  [ -x "$c" ] && WSD_BIN=$c && break
+done
+[ -f "$RUNDIR/wsd.pid" ] && kill "$(cat "$RUNDIR/wsd.pid")" 2>/dev/null || true
+if [ -n "$WSD_BIN" ]; then
+  "$WSD_BIN" "$XADDR" >/tmp/localcam-wsd.log 2>&1 &
   echo $! > "$RUNDIR/wsd.pid"
-  echo "onvif-lite: WS-Discovery on UDP 3702"
+  echo "onvif-lite: WS-Discovery UDP 3702 via $WSD_BIN"
 else
-  echo "onvif-lite: no python — WS-Discovery skipped (HTTP endpoints only)"
+  echo "onvif-lite: wsd-lite missing — WS-Discovery skipped (HTTP only)"
 fi

@@ -53,8 +53,14 @@ cp -a "$ROOT/src/web/portal/httpd.sh" "$OUT/usr/local/bin/"
 cp -a "$ROOT/src/services/services.sh" "$OUT/usr/local/bin/" 2>/dev/null || true
 cp -a "$ROOT/src/services/onvif-lite.sh" "$OUT/usr/local/bin/" 2>/dev/null || true
 cp -a "$ROOT/src/record/recorder.sh" "$OUT/usr/local/bin/" 2>/dev/null || true
+# ARMv5TE static WS-Discovery helper (Bootlin uClibc build)
+if [[ -f "$ROOT/build/bin/wsd-lite.min" ]]; then
+  cp -a "$ROOT/build/bin/wsd-lite.min" "$OUT/usr/local/bin/wsd-lite"
+elif [[ -f "$ROOT/src/services/wsd-lite.armv5" ]]; then
+  cp -a "$ROOT/src/services/wsd-lite.armv5" "$OUT/usr/local/bin/wsd-lite"
+fi
 cp -a "$ROOT/src/init/S10-localcam.sh" "$OUT/etc/init.d/" 2>/dev/null || true
-chmod 755 "$OUT/usr/local/bin/"*.sh "$OUT/etc/init.d/S10-localcam.sh" 2>/dev/null || true
+chmod 755 "$OUT/usr/local/bin/"*.sh "$OUT/usr/local/bin/wsd-lite" "$OUT/etc/init.d/S10-localcam.sh" 2>/dev/null || true
 # Stock defaults live under root/etc_default in cramfs extract
 if [[ -d "$STOCK/root/etc_default" ]]; then
   mkdir -p "$OUT/etc"

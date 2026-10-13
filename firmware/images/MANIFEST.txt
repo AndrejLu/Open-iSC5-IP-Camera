@@ -1,9 +1,10 @@
 # Localcam rootfs candidate (NOT install-approved)
-built=2026-10-13T18:00:28+02:00
+built=2026-10-13T18:45:32+02:00
 file=rootfs_localcam.cramfs
-sha256=ecff00a4b5376a7606463190bc729de10b935c58e472f129a49f2977e441b329
-size_bytes=3620864
+sha256=c4efe6da27755a4db6421756ed18ad372e3881841d6b6f6f71d2e44bac3c684b
+size_bytes=3674112
 partition_limit_bytes=7340032
 stock_backup_sha256=5339528331f1c80c378c02e00290d68e799cb13da421a1a2a92ca29b45c979bb
-status=DRAFT — SD-tested services only; missing jffs2 /etc image, WS-Discovery binary, arm ffmpeg, full boot validation
+includes=wsd-lite ARMv5TE, portal/admin/onvif/wifi scripts
+status=DRAFT — missing jffs2 /etc image, UsernameToken, full boot validation, phone captive test
 install=FORBIDDEN until approval package complete

@@ -81,7 +81,7 @@ def ensure_shell(ser, user=None, password=None) -> bool:
     wl(ser, f"echo {m}")
     t0 = time.monotonic()
     buf = ""
-    while time.monotonic() - t0 < 4:
+    while time.monotonic() - t0 < 3:
         d = ser.read(4096)
         if d:
             buf += d.decode("utf-8", errors="replace")
@@ -89,17 +89,26 @@ def ensure_shell(ser, user=None, password=None) -> bool:
                 return True
         else:
             time.sleep(0.02)
-    wl(ser, "")
-    time.sleep(0.8)
-    ser.read(8192)
-    wl(ser, user)
-    time.sleep(0.5)
+    # Reach a clean login prompt (do not send shell cmds as username)
+    for _ in range(4):
+        wl("")
+        time.sleep(0.35)
+        chunk = ser.read(8192).decode("utf-8", errors="replace")
+        buf += chunk
+        if "login:" in chunk.lower():
+            break
+        if "Password:" in chunk:
+            wl("")  # abort half-login
+            time.sleep(0.4)
+            ser.read(4096)
+    wl(user)
+    time.sleep(0.7)
     ser.read(4096)
-    wl(ser, password)
+    wl(password)
     time.sleep(1.5)
     ser.read(8192)
     m2 = f"SH_{uuid.uuid4().hex[:6]}"
-    wl(ser, f"echo {m2}")
+    wl(f"echo {m2}")
     t0 = time.monotonic()
     buf = ""
     while time.monotonic() - t0 < 5:

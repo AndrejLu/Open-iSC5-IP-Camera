@@ -44,15 +44,22 @@
 | GetDeviceInformation | **PASS** | HTTP :8000 `/cgi-bin/device_service` |
 | GetStreamUri | **PASS** | advertises `rtsp://192.168.1.50:554/unicast` |
 | GetProfiles | **DEPLOYED** | SOAP keyword match |
-| WS-Discovery UDP 3702 | **BLOCKED** | no Python on camera |
+| WS-Discovery UDP 3702 | **PASS (unicast)** | `wsd-lite` ARMv5TE static; zig musl v7 = Illegal instruction |
+| WS-Discovery multicast | **FAIL/timeout** from UDOO probe (IGMP/path TBD) |
 | Auth (WS-UsernameToken) | **NOT IMPLEMENTED** | open HTTP ONVIF |
 | Real NVR client | **PENDING** | |
 
 ## Recording / flash
 | Test | Result |
 |------|--------|
-| SD recorder script | **DEPLOYED** (needs arm ffmpeg for on-device segments; none present) |
-| Internal flash install | **BLOCKED** — approval gate; candidate not complete |
+| Host 30s H.264 copy clip | **PASS** | `private/recordings/seg_host_30s.mkv` |
+| SD writable for recordings | **PASS** | `/media/mmcblk0p1/record/localcam` |
+| On-device ffmpeg segments | **BLOCKED** | no arm ffmpeg on camera |
+| Internal flash install | **BLOCKED** — approval gate; draft cramfs only |
+
+## Ops notes
+- SD may appear as `mmcblk0` or `mmcblk1` after reseat — `paths.sh` covers both.
+- After AP tests, restart `services.sh` + `onvif-lite.sh` (SSH/RTSP stopped on AP).
 
 ## Original backup
 SHA-256 `5339528331f1c80c378c02e00290d68e799cb13da421a1a2a92ca29b45c979bb` — unchanged.
