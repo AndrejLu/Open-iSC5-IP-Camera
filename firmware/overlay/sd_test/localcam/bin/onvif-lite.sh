@@ -1,65 +1,203 @@
 #!/bin/sh
-# Minimal ONVIF-ish HTTP responder scaffold (device/media Get* only).
-# Not Profile S certified. Uses BusyBox httpd CGI on port 8000 when STA mode.
+# Lightweight ONVIF Device/Media HTTP endpoints + WS-Discovery responder.
+# Not Profile S certified. Enough for many NVRs to discover + GetStreamUri.
 
+# shellcheck disable=SC1091
+. "$(dirname "$0")/paths.sh" 2>/dev/null || . "$(dirname "$0")/../wifi/paths.sh" 2>/dev/null || true
 RUNDIR="${RUNDIR:-/tmp/localcam}"
 PORT="${ONVIF_PORT:-8000}"
-FH_HTTPD="${FH_HTTPD:-/media/mmcblk0p2/data/usr/sbin/httpd}"
-RTSP_HOST="${RTSP_HOST:-}"
+FH_HTTPD="${FH_HTTPD:-$FH_SBIN/httpd}"
+[ -x "$FH_HTTPD" ] || FH_HTTPD=/media/mmcblk1p2/data/usr/sbin/httpd
+[ -x "$FH_HTTPD" ] || FH_HTTPD=/media/mmcblk0p2/data/usr/sbin/httpd
 
-mkdir -p "$RUNDIR/onvif/cgi-bin"
+IFCFG=$(command -v ifconfig 2>/dev/null || echo /sbin/ifconfig)
+IP=$($IFCFG wlan0 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p' | head -n 1)
+[ -z "$IP" ] && IP=$($IFCFG eth0 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p' | head -n 1)
+[ -z "$IP" ] && IP=$(ip -4 addr show wlan0 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -n 1)
+[ -z "$IP" ] && IP="0.0.0.0"
+# Never advertise AP addressing for ONVIF
+case "$IP" in 192.168.4.*) echo "onvif-lite: skip on AP IP"; exit 0 ;; esac
 
-# Very small SOAP-ish responses — enough for some NVRs to list a profile URI.
-cat > "$RUNDIR/onvif/cgi-bin/device_service" <<'EOF'
+URI="rtsp://${IP}:554/unicast"
+XADDR="http://${IP}:${PORT}/onvif/device_service"
+mkdir -p "$RUNDIR/onvif/cgi-bin" "$RUNDIR/onvif/onvif"
+
+# Single CGI that inspects SOAP Action / body keywords
+cat > "$RUNDIR/onvif/cgi-bin/device_service" <<EOF
 #!/bin/sh
+body=\$(dd bs=1 count=\${CONTENT_LENGTH:-0} 2>/dev/null)
 echo "Content-Type: application/soap+xml; charset=utf-8"
 echo ""
-cat <<SOAP
+case "\$body\$HTTP_SOAPACTION\$REQUEST_URI" in
+  *GetDeviceInformation*)
+    cat <<SOAP
 <?xml version="1.0" encoding="UTF-8"?>
-<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://www.w3.org/2003/05/soap-envelope">
-  <SOAP-ENV:Body>
-    <tds:GetDeviceInformationResponse xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
-      <tds:Manufacturer>Localcam</tds:Manufacturer>
-      <tds:Model>iSC5</tds:Model>
-      <tds:FirmwareVersion>0.1.0-dev</tds:FirmwareVersion>
-      <tds:SerialNumber>local</tds:SerialNumber>
-      <tds:HardwareId>SN98660</tds:HardwareId>
-    </tds:GetDeviceInformationResponse>
-  </SOAP-ENV:Body>
-</SOAP-ENV:Envelope>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+ <s:Body>
+  <tds:GetDeviceInformationResponse xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
+   <tds:Manufacturer>Localcam</tds:Manufacturer>
+   <tds:Model>iSC5</tds:Model>
+   <tds:FirmwareVersion>0.1.0-dev</tds:FirmwareVersion>
+   <tds:SerialNumber>local</tds:SerialNumber>
+   <tds:HardwareId>SN98660</tds:HardwareId>
+  </tds:GetDeviceInformationResponse>
+ </s:Body>
+</s:Envelope>
 SOAP
+    ;;
+  *GetCapabilities*|*GetServices*)
+    cat <<SOAP
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+ <s:Body>
+  <tds:GetCapabilitiesResponse xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
+   <tds:Capabilities>
+    <tt:Device xmlns:tt="http://www.onvif.org/ver10/schema">
+     <tt:XAddr>${XADDR}</tt:XAddr>
+    </tt:Device>
+    <tt:Media xmlns:tt="http://www.onvif.org/ver10/schema">
+     <tt:XAddr>http://${IP}:${PORT}/onvif/media_service</tt:XAddr>
+     <tt:StreamingCapabilities>
+      <tt:RTP_TCP>true</tt:RTP_TCP>
+     </tt:StreamingCapabilities>
+    </tt:Media>
+   </tds:Capabilities>
+  </tds:GetCapabilitiesResponse>
+ </s:Body>
+</s:Envelope>
+SOAP
+    ;;
+  *GetSystemDateAndTime*)
+    now=\$(date -u +"-%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "2016-01-01T00:00:00Z")
+    cat <<SOAP
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+ <s:Body>
+  <tds:GetSystemDateAndTimeResponse xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
+   <tds:SystemDateAndTime>
+    <tt:DateTimeType xmlns:tt="http://www.onvif.org/ver10/schema">Manual</tt:DateTimeType>
+    <tt:DaylightSavings xmlns:tt="http://www.onvif.org/ver10/schema">false</tt:DaylightSavings>
+   </tds:SystemDateAndTime>
+  </tds:GetSystemDateAndTimeResponse>
+ </s:Body>
+</s:Envelope>
+SOAP
+    ;;
+  *)
+    cat <<SOAP
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+ <s:Body>
+  <tds:GetDeviceInformationResponse xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
+   <tds:Manufacturer>Localcam</tds:Manufacturer>
+   <tds:Model>iSC5</tds:Model>
+   <tds:FirmwareVersion>0.1.0-dev</tds:FirmwareVersion>
+   <tds:SerialNumber>local</tds:SerialNumber>
+   <tds:HardwareId>SN98660</tds:HardwareId>
+  </tds:GetDeviceInformationResponse>
+ </s:Body>
+</s:Envelope>
+SOAP
+    ;;
+esac
 EOF
 chmod +x "$RUNDIR/onvif/cgi-bin/device_service"
 
-IP=$(ifconfig wlan0 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p' | head -n 1)
-[ -z "$IP" ] && IP="0.0.0.0"
-URI="rtsp://${IP}:554/unicast"
-
 cat > "$RUNDIR/onvif/cgi-bin/media_service" <<EOF
 #!/bin/sh
+body=\$(dd bs=1 count=\${CONTENT_LENGTH:-0} 2>/dev/null)
 echo "Content-Type: application/soap+xml; charset=utf-8"
 echo ""
-cat <<SOAP
+case "\$body\$HTTP_SOAPACTION" in
+  *GetProfiles*|*GetVideoSources*)
+    cat <<SOAP
 <?xml version="1.0" encoding="UTF-8"?>
-<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://www.w3.org/2003/05/soap-envelope">
-  <SOAP-ENV:Body>
-    <trt:GetStreamUriResponse xmlns:trt="http://www.onvif.org/ver10/media/wsdl">
-      <trt:MediaUri>
-        <tt:Uri xmlns:tt="http://www.onvif.org/ver10/schema">${URI}</tt:Uri>
-      </trt:MediaUri>
-    </trt:GetStreamUriResponse>
-  </SOAP-ENV:Body>
-</SOAP-ENV:Envelope>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+ <s:Body>
+  <trt:GetProfilesResponse xmlns:trt="http://www.onvif.org/ver10/media/wsdl">
+   <trt:Profiles token="profile1" fixed="true">
+    <tt:Name xmlns:tt="http://www.onvif.org/ver10/schema">MainStream</tt:Name>
+    <tt:VideoEncoderConfiguration xmlns:tt="http://www.onvif.org/ver10/schema" token="venc1">
+     <tt:Name>H264-1080p</tt:Name>
+     <tt:Encoding>H264</tt:Encoding>
+     <tt:Resolution><tt:Width>1920</tt:Width><tt:Height>1080</tt:Height></tt:Resolution>
+     <tt:RateControl><tt:FrameRateLimit>25</tt:FrameRateLimit><tt:BitrateLimit>4096</tt:BitrateLimit></tt:RateControl>
+    </tt:VideoEncoderConfiguration>
+   </trt:Profiles>
+  </trt:GetProfilesResponse>
+ </s:Body>
+</s:Envelope>
 SOAP
+    ;;
+  *GetStreamUri*|*)
+    cat <<SOAP
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+ <s:Body>
+  <trt:GetStreamUriResponse xmlns:trt="http://www.onvif.org/ver10/media/wsdl">
+   <trt:MediaUri>
+    <tt:Uri xmlns:tt="http://www.onvif.org/ver10/schema">${URI}</tt:Uri>
+    <tt:InvalidAfterConnect xmlns:tt="http://www.onvif.org/ver10/schema">false</tt:InvalidAfterConnect>
+    <tt:InvalidAfterReboot xmlns:tt="http://www.onvif.org/ver10/schema">false</tt:InvalidAfterReboot>
+    <tt:Timeout xmlns:tt="http://www.onvif.org/ver10/schema">PT60S</tt:Timeout>
+   </trt:MediaUri>
+  </trt:GetStreamUriResponse>
+ </s:Body>
+</s:Envelope>
+SOAP
+    ;;
+esac
 EOF
 chmod +x "$RUNDIR/onvif/cgi-bin/media_service"
 
+# Alias paths some clients use
+cp "$RUNDIR/onvif/cgi-bin/device_service" "$RUNDIR/onvif/onvif/device_service"
+cp "$RUNDIR/onvif/cgi-bin/media_service" "$RUNDIR/onvif/onvif/media_service"
+chmod +x "$RUNDIR/onvif/onvif/"*
+
 echo "A:*" > "$RUNDIR/onvif-httpd.conf"
-killall -q onvif-httpd 2>/dev/null || true
-# Bind alternate port; name collision avoided by -p
+[ -f "$RUNDIR/onvif.pid" ] && kill "$(cat "$RUNDIR/onvif.pid")" 2>/dev/null || true
 if [ -x "$FH_HTTPD" ]; then
   "$FH_HTTPD" -h "$RUNDIR/onvif" -p "$PORT" -c "$RUNDIR/onvif-httpd.conf" \
     >/tmp/localcam-onvif.log 2>&1 &
   echo $! > "$RUNDIR/onvif.pid"
-  echo "onvif-lite: http://$IP:$PORT/cgi-bin/device_service (scaffold)"
+  echo "onvif-lite: $XADDR media→$URI"
+fi
+
+# Minimal WS-Discovery Hello/ProbeMatches via Python if available, else skip
+if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+  PY=$(command -v python3 || command -v python)
+  cat > "$RUNDIR/onvif-wsd.py" <<PY
+import socket, time
+IP="$IP"; PORT=$PORT; XADDR="$XADDR"
+MSG = """<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery" xmlns:dn="http://www.onvif.org/ver10/network/wsdl">
+ <s:Header><a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches</a:Action><a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To></s:Header>
+ <s:Body><d:ProbeMatches><d:ProbeMatch>
+  <a:EndpointReference><a:Address>urn:uuid:localcam-isc5</a:Address></a:EndpointReference>
+  <d:Types>dn:NetworkVideoTransmitter</d:Types>
+  <d:Scopes>onvif://www.onvif.org/name/Localcam onvif://www.onvif.org/type/Network_Video_Transmitter</d:Scopes>
+  <d:XAddrs>%s</d:XAddrs>
+  <d:MetadataVersion>1</d:MetadataVersion>
+ </d:ProbeMatch></d:ProbeMatches></s:Body></s:Envelope>""" % XADDR
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+  sock.bind(("", 3702))
+except Exception:
+  raise SystemExit(0)
+sock.settimeout(1.0)
+while True:
+  try:
+    data, addr = sock.recvfrom(8192)
+  except Exception:
+    continue
+  if b"Probe" in data:
+    sock.sendto(MSG.encode(), addr)
+PY
+  "$PY" "$RUNDIR/onvif-wsd.py" >/tmp/localcam-wsd.log 2>&1 &
+  echo $! > "$RUNDIR/wsd.pid"
+  echo "onvif-lite: WS-Discovery on UDP 3702"
+else
+  echo "onvif-lite: no python — WS-Discovery skipped (HTTP endpoints only)"
 fi

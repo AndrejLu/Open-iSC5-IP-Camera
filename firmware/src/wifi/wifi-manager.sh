@@ -7,19 +7,9 @@
 
 set -e
 
-# Prefer fanghacks SD overlay config during development; flash image uses /etc/localcam
-if [ -z "$CFGDIR" ]; then
-  if [ -d /media/mmcblk0p1/localcam ]; then
-    CFGDIR=/media/mmcblk0p1/localcam/etc
-  elif [ -d /media/mmcblk0p2/data/localcam ]; then
-    CFGDIR=/media/mmcblk0p2/data/localcam/etc
-  else
-    CFGDIR=/etc/localcam
-  fi
-fi
-RUNDIR="${RUNDIR:-/tmp/localcam}"
-WLAN="${WLAN:-wlan0}"
-AP_IP="${AP_IP:-192.168.4.1}"
+# Shared CFGDIR / fang paths (mmcblk0|1, lc|localcam)
+# shellcheck disable=SC1091
+. "$(dirname "$0")/paths.sh" 2>/dev/null || . /media/mmcblk1p1/lc/bin/paths.sh 2>/dev/null || true
 AP_NET="${AP_NET:-192.168.4.0}"
 STA_TIMEOUT="${STA_TIMEOUT:-90}"
 LOSS_TIMEOUT="${LOSS_TIMEOUT:-90}"
@@ -180,15 +170,15 @@ start_ap() {
   # Restrict AP clients to portal/DHCP/DNS when iptables exists
   FW="$(dirname "$0")/ap-firewall.sh"
   [ -x "$FW" ] && "$FW" ap || true
-  # Soft isolation when no iptables: stop fang maintenance daemons during AP
+  # Soft isolation when no iptables: stop fang maintenance + media services on AP
   killall telnetd ftpd 2>/dev/null || true
-  # Prefer not exposing stock dropbear on open AP — stop if we own setup-ap
-  if [ "$mode_label" = "setup-ap" ]; then
-    killall dropbear 2>/dev/null || true
-  fi
+  killall -9 snx_rtsp_server 2>/dev/null || true
+  killall dropbear 2>/dev/null || true
+  # Stop ONVIF httpd if we started one
+  [ -f "$RUNDIR/onvif.pid" ] && kill "$(cat "$RUNDIR/onvif.pid")" 2>/dev/null || true
   set_state "$mode_label"
   rm -f "$ERR_FILE"
-  log "AP up: $ssid @ $AP_IP"
+  log "AP up: $ssid @ $AP_IP (media/SSH stopped for isolation)"
 }
 
 # Write wpa_supplicant.conf atomically from wifi.conf (key=value, no shell eval of values)
@@ -238,6 +228,28 @@ sta_has_ip() {
   ifconfig "$WLAN" 2>/dev/null | grep -q "inet addr:"
 }
 
+# LAN usable: associated, has non-AP IP. Does NOT require Internet/DNS.
+sta_lan_ok() {
+  sta_associated || return 1
+  ip=$(ifconfig "$WLAN" 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p' | head -n 1)
+  [ -z "$ip" ] && return 1
+  case "$ip" in
+    192.168.4.*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+default_gw() {
+  route -n 2>/dev/null | sed -n 's/^0\.0\.0\.0[[:space:]]\{1,\}\([0-9.]\{1,\}\).*/\1/p' | head -n 1
+}
+
+# Optional: ping default GW (LAN). Never use public Internet as health signal.
+sta_gw_reachable() {
+  gw=$(default_gw)
+  [ -z "$gw" ] && return 1
+  ping -c 1 -W 2 "$gw" >/dev/null 2>&1
+}
+
 start_sta() {
   log "starting STA mode CFGDIR=$CFGDIR conf=$WIFI_CONF"
   if ! has_wifi_conf; then
@@ -273,22 +285,15 @@ wait_sta() {
       log "setup session active — abort wait"
       return 2
     fi
-    if sta_associated && sta_has_ip; then
-      # Reject leftover AP addressing
+    if sta_lan_ok; then
       ip=$(ifconfig "$WLAN" 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p' | head -n 1)
-      case "$ip" in
-        192.168.4.*) ;;
-        "") ;;
-        *)
-          set_state "station"
-          rm -f "$ERR_FILE"
-          log "STA connected with IP $ip"
-          return 0
-          ;;
-      esac
+      set_state "station"
+      rm -f "$ERR_FILE"
+      log "STA connected with IP $ip"
+      return 0
     fi
     if [ $((n % 15)) -eq 0 ]; then
-      log "wait_sta ${n}s assoc=$(sta_associated && echo y || echo n) $(iwconfig "$WLAN" 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g' | cut -c1-120)"
+      log "wait_sta ${n}s lan=$(sta_lan_ok && echo y || echo n) $(iwconfig "$WLAN" 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g' | cut -c1-120)"
     fi
     n=$((n + 1))
     sleep 1
@@ -360,23 +365,25 @@ cmd_monitor() {
     fi
     case "$st" in
       station)
-        if ! sta_associated; then
-          log "association lost — waiting ${LOSS_TIMEOUT}s"
+        # Only Wi-Fi/LAN loss triggers fallback — Internet-only outage must not.
+        if ! sta_lan_ok; then
+          log "LAN lost (assoc/IP) — waiting ${LOSS_TIMEOUT}s before fallback"
           set_state "station-lost"
           n=0
           recovered=0
           while [ "$n" -lt "$LOSS_TIMEOUT" ]; do
             [ -f "$SETUP_LOCK" ] && break
-            if sta_associated && sta_has_ip; then
+            if sta_lan_ok; then
               recovered=1
               set_state "station"
+              log "LAN recovered"
               break
             fi
             n=$((n + 1))
             sleep 1
           done
           if [ "$recovered" -eq 0 ] && [ ! -f "$SETUP_LOCK" ]; then
-            log "sustained loss — fallback AP"
+            log "sustained LAN loss — fallback AP (wifi.conf preserved)"
             start_ap "fallback-ap"
           fi
         fi

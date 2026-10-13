@@ -1,17 +1,30 @@
 #!/bin/sh
 # Captive-portal CGI. CFGDIR must match wifi-manager (SD overlay during test).
+# shellcheck disable=SC1091
+for _p in \
+  /media/mmcblk1p1/lc/bin/paths.sh \
+  /media/mmcblk0p1/localcam/bin/paths.sh \
+  "$(dirname "$0")/../../../wifi/paths.sh"
+do
+  [ -f "$_p" ] && . "$_p" && break
+done
 if [ -z "$CFGDIR" ]; then
-  if [ -d /media/mmcblk0p1/localcam ]; then
-    CFGDIR=/media/mmcblk0p1/localcam/etc
-  elif [ -d /media/mmcblk0p2/data/localcam ]; then
-    CFGDIR=/media/mmcblk0p2/data/localcam/etc
-  else
-    CFGDIR=/etc/localcam
-  fi
+  for d in /media/mmcblk1p1/lc/etc /media/mmcblk0p1/localcam/etc \
+           /media/mmcblk1p2/data/localcam/etc /media/mmcblk0p2/data/localcam/etc \
+           /etc/localcam; do
+    [ -d "$d" ] && CFGDIR=$d && break
+  done
 fi
 RUNDIR="${RUNDIR:-/tmp/localcam}"
-WM="${WM:-/media/mmcblk0p1/localcam/bin/wifi-manager.sh}"
-[ -x "$WM" ] || WM=/media/mmcblk0p2/data/localcam/bin/wifi-manager.sh
+WM="${WM:-}"
+for w in \
+  /media/mmcblk1p1/lc/bin/wifi-manager.sh \
+  /media/mmcblk0p1/localcam/bin/wifi-manager.sh \
+  /media/mmcblk1p2/data/localcam/bin/wifi-manager.sh \
+  /media/mmcblk0p2/data/localcam/bin/wifi-manager.sh
+do
+  [ -x "$w" ] && WM=$w && break
+done
 WLAN="${WLAN:-wlan0}"
 mkdir -p "$CFGDIR" "$RUNDIR" 2>/dev/null || true
 export CFGDIR RUNDIR WLAN WM
@@ -132,14 +145,37 @@ case "$route" in
         echo "Status: 400 Bad Request"; echo "Content-Type: application/json"; echo ""; echo '{"error":"Admin password required (min 8)"}'; exit 0
       fi
       salt=$(dd if=/dev/urandom bs=4 count=1 2>/dev/null | md5sum | cut -c1-8)
-      # No awk on stock PATH — use cut
-      ph=$(printf '%s' "${salt}${admin}" | md5sum | cut -c1-32)
-      hash="sha256:${salt}:${ph}"
+      # Prefer sha256sum; label algorithm honestly (md5 fallback on tiny BusyBox)
+      if command -v sha256sum >/dev/null 2>&1; then
+        ph=$(printf '%s' "${salt}${admin}" | sha256sum | cut -c1-64)
+        hash="sha256:${salt}:${ph}"
+      else
+        ph=$(printf '%s' "${salt}${admin}" | md5sum | cut -c1-32)
+        hash="md5:${salt}:${ph}"
+      fi
       umask 077
       echo "password_hash=$hash" > "$CFGDIR/admin.conf.tmp"
       mv "$CFGDIR/admin.conf.tmp" "$CFGDIR/admin.conf"
       sync
       echo "$(date) admin.conf written CFGDIR=$CFGDIR" >> /tmp/localcam-portal.log
+    else
+      # Later Wi-Fi changes (fallback) require admin password
+      alen=$(printf '%s' "$admin" | wc -c)
+      if [ "$alen" -lt 1 ]; then
+        echo "Status: 401 Unauthorized"; echo "Content-Type: application/json"; echo ""; echo '{"error":"Admin password required to change Wi-Fi"}'; exit 0
+      fi
+      line=$(grep '^password_hash=' "$CFGDIR/admin.conf" | head -n 1 | sed 's/^password_hash=//')
+      algo=$(echo "$line" | cut -d: -f1)
+      salt=$(echo "$line" | cut -d: -f2)
+      want=$(echo "$line" | cut -d: -f3)
+      if [ "$algo" = "sha256" ] && command -v sha256sum >/dev/null 2>&1; then
+        got=$(printf '%s' "${salt}${admin}" | sha256sum | cut -c1-64)
+      else
+        got=$(printf '%s' "${salt}${admin}" | md5sum | cut -c1-32)
+      fi
+      if [ "$got" != "$want" ]; then
+        echo "Status: 401 Unauthorized"; echo "Content-Type: application/json"; echo ""; echo '{"error":"Invalid admin password"}'; exit 0
+      fi
     fi
     key_mgmt=WPA-PSK
     [ "$open" = "true" ] && key_mgmt=NONE && psk=

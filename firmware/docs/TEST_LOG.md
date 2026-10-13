@@ -1,42 +1,58 @@
 # Hardware test log
 
 ## Environment
-- Host: UDOO X86, serial bridge `/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00`
-- Camera: iSC5 FW 3.0.3.56 + fanghacks SD
-- Date: 2026-10-12
+- Host: UDOO X86, serial `/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00`
+- Camera: iSC5 + fanghacks SD (`mmcblk1` while seated)
+- LAN: `192.168.1.50` on **<HOME_SSID>**
+- Updated: 2026-10-13
 
-## Wi-Fi AP / portal (SD overlay `localcam`)
+## Wi-Fi AP / portal / fallback
 | Test | Result | Evidence |
 |------|--------|----------|
-| Open AP starts | **PASS** | `ESSID:"Camera-<MAC6>"`, `Encryption key:off`, Mode:Master |
-| AP IP 192.168.4.1 | **PASS** | `ifconfig wlan0` |
-| hostapd rtl871xdrv | **PASS** | hostapd.conf `driver=rtl871xdrv` |
-| udhcpd running | **PASS** | pidof includes udhcpd |
-| Portal index.html | **PASS** | `wget http://192.168.4.1/` returns local HTML |
-| `/cgi-bin/status` JSON | **PASS** | after fixing httpd.conf auth |
-| `/cgi-bin/scan` networks | **PASS** | saw FRITZ!Box, T-2, ZZ1, HP DIRECT |
-| Phone captive portal | **NEED USER** | UDOO has no Wi-Fi NIC |
-| Bad/good PSK connect | **PENDING** | needs phone or STA credentials |
-| 90s fallback | **PENDING** | logic in wifi-manager; not timed yet |
+| Open AP starts | **PASS** | `Camera-<MAC6>`, Encryption key:off |
+| AP IP 192.168.4.1 | **PASS** | hostapd + ifconfig |
+| Portal + scan w/ signal % | **PASS** | `/cgi-bin/scan` JSON `signal` / `signal_pct` |
+| No saved wifi.conf → setup-ap immediately | **PASS** | `m4_wifi_noconf.txt` state=`setup-ap` |
+| Bad PSK → timeout → fallback-ap | **PASS** | `STA_TIMEOUT=25`, state=`fallback-ap`; conf preserved |
+| Restore good conf → station | **PASS** | IP `192.168.1.50` |
+| Internet-only outage → no fallback | **PASS (design)** | monitor uses `sta_lan_ok` only (assoc+LAN IP), not public ping |
+| Soft AP isolation (no iptables) | **PASS** | AP mode kills RTSP/SSH/ONVIF; open AP |
+| Phone captive portal UX | **NEED USER** | Connect phone to `Camera-<MAC6>`, open portal |
+| iptables AP firewall | **N/A** | no iptables on device |
 
-## RTSP (without iSC3S)
+## RTSP
 | Test | Result | Evidence |
 |------|--------|----------|
-| Stop iSC3S + start `snx_rtsp_server` | **PASS** | pid listening `:554` |
-| URL advertised | **PASS** | `rtsp://0.0.0.0/unicast` @ 1920x1080 |
-| Needs `/etc/rc` | **PASS** | copy from `/root/etc_default/rc` |
-| 720p crop path | **FAIL** | segfault — use 1080p for now |
-| Decode on UDOO | **BLOCKED** | UDOO has no Wi-Fi; need STA or phone |
+| URL | **PASS** | `rtsp://192.168.1.50:554/unicast` auth=none |
+| Codec / size / fps | **PASS** | H.264 1920×1080 ~25 fps; G.711A 8 kHz mono |
+| Decode + 10 s clip | **PASS** | `private/rtsp_tests/clip_10s.mkv` |
+| 10 min soak decode | **PASS** | 14337 frames / 600 s; exit 0; VmRSS stable |
+| TCP interleaved RTSP | **FAIL/hang** | prefer UDP on this LIVE555 build |
+| Report | | `docs/RTSP_TEST_REPORT.md` |
 
-## Other
+## Admin / persistence
+| Test | Result | Notes |
+|------|--------|-------|
+| Admin CGI + UI | **DEPLOYED** | login/logout/password/wifi CSRF |
+| Admin hash label | **FIXED** | md5/sha256 labeled honestly |
+| Dropbear keys in CFGDIR | **PARTIAL** | ecdsa key copied to p2 `localcam/etc/dropbear` + p1; verify across reboot still TODO |
+| Flash /etc persistence | **NOT YET** | SD-tested only |
+
+## ONVIF
+| Test | Result | Notes |
+|------|--------|-------|
+| GetDeviceInformation | **PASS** | HTTP :8000 `/cgi-bin/device_service` |
+| GetStreamUri | **PASS** | advertises `rtsp://192.168.1.50:554/unicast` |
+| GetProfiles | **DEPLOYED** | SOAP keyword match |
+| WS-Discovery UDP 3702 | **BLOCKED** | no Python on camera |
+| Auth (WS-UsernameToken) | **NOT IMPLEMENTED** | open HTTP ONVIF |
+| Real NVR client | **PENDING** | |
+
+## Recording / flash
 | Test | Result |
 |------|--------|
-| Live `/proc/mtd` matches expected | **PASS** |
-| Flash backup SHA-256 | **PASS** `5339528331f1c80c378c02e00290d68e799cb13da421a1a2a92ca29b45c979bb` |
-| SD fang archives pulled | **PASS** `fh_boot.tar` + `fh_data.tar` |
-| Draft cramfs ≤ 7 MiB | **PASS** ~2.4 MiB (incomplete fang merge) |
-| ONVIF | scaffold only |
-| Internal flash install | **BLOCKED** — approval gate |
+| SD recorder script | **DEPLOYED** (needs arm ffmpeg for on-device segments; none present) |
+| Internal flash install | **BLOCKED** — approval gate; candidate not complete |
 
-## Listening ports (AP + RTSP test, after soft isolation)
-80 (portal), 554 (snx_rtsp), 22 (stock dropbear still). Telnet/FTP stopped. No iptables — full AP isolation deferred.
+## Original backup
+SHA-256 `5339528331f1c80c378c02e00290d68e799cb13da421a1a2a92ca29b45c979bb` — unchanged.

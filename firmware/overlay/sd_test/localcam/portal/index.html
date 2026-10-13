@@ -68,7 +68,12 @@ button:disabled{opacity:.5}
   function loadStatus(){
     fetch('/cgi-bin/status').then(function(r){return r.json();}).then(function(j){
       document.getElementById('apname').textContent='Hotspot: '+j.ap_ssid+' — pick your Wi-Fi below.';
-      if(j.has_admin){document.getElementById('adminbox').style.display='none';}
+      if(j.has_admin){
+        document.querySelector('label[for=adminpw]').textContent='Administrator password (required to change Wi-Fi)';
+        document.getElementById('adminpw2').style.display='none';
+        var l2=document.querySelector('label[for=adminpw2]'); if(l2) l2.style.display='none';
+        document.getElementById('adminpw').removeAttribute('minlength');
+      }
       if(j.notice){notice.style.display='block';notice.textContent=j.notice;}
       if(j.error){showErr(j.error);}
     }).catch(function(){});
