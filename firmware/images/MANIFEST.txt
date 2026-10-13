@@ -1,5 +1,9 @@
-# Draft artifacts — NOT approved for internal flash
-generated=2026-10-12T21:03:16Z
-rootfs_localcam.cramfs 3608576 2a3a3686562bed8333f861b93fa9f43a836e45b97c65c6f18f69dbfa00196c1e
-sd-archive/fh_boot.tar 785920 d66fc6514dd4b9b3960f7efcaa751406a6ebee15d9225c3f21a5f38ca01d0495
-sd-archive/fh_data.tar 2981376 6e609d5ecc41bc2c3fe2ba4509471dece1b7f9099f9b44714b0ad3ba97080d4c
+# Localcam rootfs candidate (NOT install-approved)
+built=2026-10-13T18:00:28+02:00
+file=rootfs_localcam.cramfs
+sha256=ecff00a4b5376a7606463190bc729de10b935c58e472f129a49f2977e441b329
+size_bytes=3620864
+partition_limit_bytes=7340032
+stock_backup_sha256=5339528331f1c80c378c02e00290d68e799cb13da421a1a2a92ca29b45c979bb
+status=DRAFT — SD-tested services only; missing jffs2 /etc image, WS-Discovery binary, arm ffmpeg, full boot validation
+install=FORBIDDEN until approval package complete

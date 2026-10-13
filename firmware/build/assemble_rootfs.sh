@@ -26,18 +26,35 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   fi
 done < "$ALLOW"
 
-# Strip cloud bits if accidentally present
+# Strip cloud bits if accidentally present (binaries + configs/hooks)
 rm -rf "$OUT/usr/bin/iSC3S" "$OUT/usr/share/miio_client" \
   "$OUT/lib/libIOTCAPIs.so" "$OUT/lib/libAVAPIs.so" \
-  "$OUT/lib/libpaho-mqtt3as.so.1" "$OUT/usr/bin/smbclient" 2>/dev/null || true
+  "$OUT/lib/libpaho-mqtt3as.so.1" "$OUT/usr/bin/smbclient" \
+  "$OUT/root/etc_default/miio" "$OUT/root/etc_default/miio_client" \
+  "$OUT/etc/miio" "$OUT/etc/miio_client" \
+  "$OUT/usr/bin/miio_client" "$OUT/usr/bin/miio_agent" \
+  "$OUT/usr/bin/miot_"* 2>/dev/null || true
+# Remove vendor cloud start hooks from default rc if present
+if [[ -d "$OUT/root/etc_default/rc" ]]; then
+  find "$OUT/root/etc_default/rc" -type f \( -iname '*miio*' -o -iname '*cloud*' -o -iname '*iSC3*' \) -delete 2>/dev/null || true
+fi
+if [[ -d "$OUT/etc/rc" ]]; then
+  find "$OUT/etc/rc" -type f \( -iname '*miio*' -o -iname '*cloud*' -o -iname '*iSC3*' \) -delete 2>/dev/null || true
+fi
 
-# Overlay our scripts
-mkdir -p "$OUT/usr/local/bin" "$OUT/usr/local/share" "$OUT/etc/localcam"
+# Overlay our scripts (cloud-free localcam)
+mkdir -p "$OUT/usr/local/bin" "$OUT/usr/local/share" "$OUT/etc/localcam" "$OUT/etc/init.d"
+cp -a "$ROOT/src/wifi/paths.sh" "$OUT/usr/local/bin/"
 cp -a "$ROOT/src/wifi/wifi-manager.sh" "$OUT/usr/local/bin/"
 cp -a "$ROOT/src/wifi/ap-firewall.sh" "$OUT/usr/local/bin/" 2>/dev/null || true
 cp -a "$ROOT/src/web/portal" "$OUT/usr/local/share/localcam-portal"
+cp -a "$ROOT/src/web/admin" "$OUT/usr/local/share/localcam-admin"
 cp -a "$ROOT/src/web/portal/httpd.sh" "$OUT/usr/local/bin/"
 cp -a "$ROOT/src/services/services.sh" "$OUT/usr/local/bin/" 2>/dev/null || true
+cp -a "$ROOT/src/services/onvif-lite.sh" "$OUT/usr/local/bin/" 2>/dev/null || true
+cp -a "$ROOT/src/record/recorder.sh" "$OUT/usr/local/bin/" 2>/dev/null || true
+cp -a "$ROOT/src/init/S10-localcam.sh" "$OUT/etc/init.d/" 2>/dev/null || true
+chmod 755 "$OUT/usr/local/bin/"*.sh "$OUT/etc/init.d/S10-localcam.sh" 2>/dev/null || true
 # Stock defaults live under root/etc_default in cramfs extract
 if [[ -d "$STOCK/root/etc_default" ]]; then
   mkdir -p "$OUT/etc"
