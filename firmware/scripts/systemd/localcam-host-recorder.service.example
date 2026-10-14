@@ -1,0 +1,26 @@
+# Example user service for host-assisted SD recording.
+# Install only AFTER confirming the old host recorder is stopped.
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp localcam-host-recorder.service.example ~/.config/systemd/user/localcam-host-recorder.service
+#   # edit WorkingDirectory / ExecStart camera IP if needed
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now localcam-host-recorder.service
+#
+# Requires firmware/private/cam_creds.env and ffmpeg (see README / docs/BOLT_MIGRATION.md).
+
+[Unit]
+Description=LocalCam host RTSP→SD recorder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Documents/Code Projects/Open-iSC5-IP-Camera
+Environment=PATH=%h/.local/bin:/usr/bin:/bin
+ExecStart=%h/Documents/Code Projects/Open-iSC5-IP-Camera/firmware/.venv/bin/python firmware/scripts/host_recorder.py -u rtsp://192.168.187.180:554/unicast -t 20
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

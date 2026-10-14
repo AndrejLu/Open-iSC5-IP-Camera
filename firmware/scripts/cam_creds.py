@@ -15,7 +15,7 @@ def load() -> dict[str, str]:
                 continue
             k, v = line.split("=", 1)
             vals[k.strip()] = v.strip().strip('"').strip("'")
-    host = os.environ.get("LOCALCAM_HOST", vals.get("LOCALCAM_HOST", "192.168.1.50"))
+    host = os.environ.get("LOCALCAM_HOST", vals.get("LOCALCAM_HOST", "192.168.187.180"))
     user = os.environ.get("LOCALCAM_USER", vals.get("LOCALCAM_USER", "root"))
     password = os.environ.get("LOCALCAM_PASS", vals.get("LOCALCAM_PASS", ""))
     return {"host": host, "user": user, "password": password}

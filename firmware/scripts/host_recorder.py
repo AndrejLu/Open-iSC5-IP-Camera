@@ -16,21 +16,23 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cam_ssh import connect, put_file, run  # noqa: E402
 
-DEFAULT_URL = "rtsp://192.168.1.50:554/unicast"
+DEFAULT_URL = "rtsp://192.168.187.180:554/unicast"
 REMOTE_DIR = "/media/mmcblk0p1/record/localcam"
 RUNDIR = "/tmp/localcam"
 
 
 def find_ffmpeg() -> str:
   root = Path(__file__).resolve().parents[1]
+  home = Path.home()
   cand = [
     root / "tools/ffmpeg-7.0.2-amd64-static/ffmpeg",
+    home / ".local/bin/ffmpeg",
     Path("/usr/bin/ffmpeg"),
   ]
   for c in cand:
     if c.is_file() and c.stat().st_mode & 0o111:
       return str(c)
-  raise SystemExit("ffmpeg not found (expected firmware/tools/ffmpeg-*-static/ffmpeg)")
+  raise SystemExit("ffmpeg not found (expected firmware/tools/ffmpeg-*-static/ffmpeg or ~/.local/bin/ffmpeg)")
 
 
 def set_state(c, state: str) -> None:

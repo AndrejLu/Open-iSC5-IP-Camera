@@ -47,10 +47,12 @@ Cloud apps (`iSC3S`, miio, TUTK) are **not started** by the LocalCam SD overlay 
 
 ### On the development host (UDOO / Linux PC)
 
-- Serial UART bridge (`uart-bridge/`) for boot logs and recovery shell
+- Serial UART bridge (`uart-bridge/`) for boot logs and recovery shell (USB-TTL 3.3 V on UDOO Bolt; Curie bridge was UDOO X86-only)
 - Python helpers (`firmware/scripts/`) for SSH deploy, serial file push/pull, **host recorder**
 - Optional cross toolchain (Bootlin ARMv5 EABI uClibc) to build `wsd-lite` and experimental RTSP helpers
 - Host `ffmpeg` (system or a local static build under `firmware/tools/`, gitignored)
+
+Host move notes (Bolt V8): see `docs/BOLT_MIGRATION.md`.
 
 ## Service ports (placeholders)
 
