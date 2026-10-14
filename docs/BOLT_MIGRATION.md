@@ -51,20 +51,27 @@ The old UDOO X86 used onboard Intel Curie as USB-UART. **That does not apply to 
 On Bolt:
 
 - `/dev/ttyACM0` is the **Arduino Leonardo-compatible ATmega32U4** (CN24) — **5 V logic**. Do **not** wire the camera UART here.
-- CN25 EC UART0/1 (`/dev/ttyS0`, `/dev/ttyS1`): pin I/O is documented as **3.3 V**, but the UART block is described with RS-232 interface wording. Treat as **unverified** for camera TTL until measured.
+- **CN25 Embedded Controller UART0** is the intended path: manual lists `EC_UART_RxD0` / `TxD0` at **+3.3V_DSW** ([Pinout Headers](https://www.udoo.org/docs-bolt/Hardware_References/Pinout_Headers.html), UDOO BOLT User Manual §3.3.13). Linux device: **`/dev/ttyS0`** (UART0 @ 0x3f8). UART1 is `/dev/ttyS1`.
 
-**Preferred:** USB-to-TTL adapter with **verified 3.3 V** logic (FTDI/CP210x/CH340 in 3.3 V mode).
+### CN25 UART0 wiring (camera ↔ Bolt)
 
-Wiring:
+Header is on the **bottom** of the board (CN25). Leave RTS/CTS (pins 38/40) unconnected.
 
-| Camera | Adapter |
-|--------|---------|
-| TX | RX |
-| RX | TX |
-| GND | GND |
-| VCC | leave disconnected (power camera normally) |
+| Camera | Bolt CN25 |
+|--------|-----------|
+| TX | **Pin 34** `EC_UART_RxD0` (UART0 RX) |
+| RX | **Pin 36** `EC_UART_TxD0` (UART0 TX) |
+| GND | **Pin 29 or 31** `GND` |
+| VCC | leave disconnected (power camera through its normal supply) |
 
-Settings: **115200 8N1**. Permissions: add user to `dialout` (not world-writable `chmod 666`). Prefer `/dev/serial/by-id/…` stable path. Only one process may open the port.
+Settings: **115200 8N1**. Permissions: `sudo usermod -aG dialout "$USER"` then re-login (not world-writable `chmod 666`). Only one process may open the port.
+
+```bash
+export LOCALCAM_SERIAL=/dev/ttyS0
+# then e.g. firmware/.venv/bin/python uart-bridge/capture/uart_capture.py …
+```
+
+Alternate: USB-to-TTL **3.3 V** adapter if CN25 is inconvenient; set `LOCALCAM_SERIAL` to that `/dev/serial/by-id/…` path.
 
 ## Private assets (gitignored)
 
