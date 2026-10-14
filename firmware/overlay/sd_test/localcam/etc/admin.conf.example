@@ -1,0 +1,5 @@
+# Example admin password store (created on first setup). Format is implementation-defined.
+# Real admin.conf lives on the camera under the LocalCam config directory and is gitignored.
+#
+# password_hash=<salted-hash>
+# hash_alg=sha256

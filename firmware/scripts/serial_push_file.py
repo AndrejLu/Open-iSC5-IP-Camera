@@ -5,7 +5,8 @@ import argparse, hashlib, re, sys, time, uuid
 from pathlib import Path
 import serial
 
-PORT = "/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00"
+from serial_port import default_serial_port
+PORT = default_serial_port() or "/dev/ttyACM0"
 MAX_LINE = 100
 
 

@@ -1,29 +1,17 @@
-# Capture hashes 2026-10-12T17:08:24Z
+# Reference hashes for local artifacts (paths relative to uart-bridge/).
+# Binary dumps and logs are NOT in git — keep them in local backups/.
 
-39ad52b77fa13c583d3ddabfe97c1686c4683e76068c7f2acd64d6f5094ba123  ./uart-bridge/logs/boot_20261012T170402Z.bin
-39ad52b77fa13c583d3ddabfe97c1686c4683e76068c7f2acd64d6f5094ba123  ./uart-bridge/logs/boot_20261012T170402Z.log
-4cf1f292cac42ebd08338e205624fec14d36cfd7c4c8d87d3dc7666218a9d084  ./uart-bridge/logs/boot_20261012T170402Z.meta.json
-7c0cf4364616f7da3c0def2689608d99bdda0faed42335c46090a811403394f3  ./uart-bridge/logs/boot_sequence_only.txt
-2f75ef1437ab8d74a836b44f1ffc5973defceffba50c6ad1506fb3ab1e33fcc9  ./uart-bridge/logs/boot_20261012T170402Z.clean.txt
-ab5cf15518f73e6feb5b9a75e2018580de77723be5731508e88fb29250a40b61  ./uart-bridge/arduino/CameraUartRxBridge/CameraUartRxBridge.ino
-dc92ec4f6a67eb6ac06136cfe535d012d0a243419690f1cb7de0b98b8459e72e  ./uart-bridge/capture/uart_capture.py
+# Flash backup flash_20261012T184535Z (local only)
+# Full 16 MiB SPI dump SHA-256:
+5339528331f1c80c378c02e00290d68e799cb13da421a1a2a92ca29b45c979bb  backups/flash_*/flash_full_16MiB.bin
 
-# Tool versions
-arduino-cli  Version: 1.5.1 Commit: 01f3d4f2b Date: 2026-06-05T10:22:17Z
-Intel:arc32 2.0.6
-pyserial 3.5
+# Per-partition SHA-256 (same backup set; files local-only):
+33a30250f41b3f7ed661b259c5716eb1d9e08df13f29df4ae0cd1df2d198c145  backups/flash_*/mtdblock0_uboot.bin
+9ef0a1a26607070554423bca613c1627974a1df486923b20a8f5d511c7d5c92e  backups/flash_*/mtdblock1_kernel.bin
+dee19d16624246256d1a8e1f5424a589acad1213b807ef093b5c082ac5ef3243  backups/flash_*/mtdblock2_rootfs.bin
+de8d99b2694d600ce14471920556d3f003bbbe6203587163111530a7ad3d91ea  backups/flash_*/mtdblock3_rescue.bin
+e1f507e1f82a8556cf74b77959cbbb51c28d3d73e6ef72d734042ef26bce0ea4  backups/flash_*/mtdblock4_etc.bin
+f6e1d0868b42d7eae23af817eb1345d8211b7962de55a632e430636c2a851af2  backups/flash_*/mtdblock5_userconfig.bin
 
-# Second capture 20261012T171549Z
-30fb63adbf74eb609656853b81043f14a62394ee9ac6242335ced06014e01a44  ./uart-bridge/logs/boot_20261012T171549Z.bin
-30fb63adbf74eb609656853b81043f14a62394ee9ac6242335ced06014e01a44  ./uart-bridge/logs/boot_20261012T171549Z.log
-3e039e47e98578773474b1b6e3cb25187b0040dd885d79703949ffe4d216a4cc  ./uart-bridge/logs/boot_20261012T171549Z.meta.json
-
-# Flash backup flash_20261012T184535Z
-33a30250f41b3f7ed661b259c5716eb1d9e08df13f29df4ae0cd1df2d198c145  ./uart-bridge/backups/flash_20261012T184535Z/mtdblock0_uboot.bin
-9ef0a1a26607070554423bca613c1627974a1df486923b20a8f5d511c7d5c92e  ./uart-bridge/backups/flash_20261012T184535Z/mtdblock1_kernel.bin
-dee19d16624246256d1a8e1f5424a589acad1213b807ef093b5c082ac5ef3243  ./uart-bridge/backups/flash_20261012T184535Z/mtdblock2_rootfs.bin
-de8d99b2694d600ce14471920556d3f003bbbe6203587163111530a7ad3d91ea  ./uart-bridge/backups/flash_20261012T184535Z/mtdblock3_rescue.bin
-e1f507e1f82a8556cf74b77959cbbb51c28d3d73e6ef72d734042ef26bce0ea4  ./uart-bridge/backups/flash_20261012T184535Z/mtdblock4_etc.bin
-f6e1d0868b42d7eae23af817eb1345d8211b7962de55a632e430636c2a851af2  ./uart-bridge/backups/flash_20261012T184535Z/mtdblock5_userconfig.bin
-5339528331f1c80c378c02e00290d68e799cb13da421a1a2a92ca29b45c979bb  ./uart-bridge/backups/flash_20261012T184535Z/flash_full_16MiB.bin
-# Camera MD5s matched host for all six partitions (see MANIFEST.json)
+# Sketch / capture tool (tracked source)
+# Recompute after edits: sha256sum arduino/CameraUartRxBridge/CameraUartRxBridge.ino capture/uart_capture.py

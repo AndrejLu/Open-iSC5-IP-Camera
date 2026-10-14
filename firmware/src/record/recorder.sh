@@ -16,17 +16,22 @@ if [ -z "$REC_ROOT" ]; then
 fi
 REC_ROOT="${REC_ROOT:-/media/mmcblk0p1/record/localcam}"
 SEG_SEC="${SEG_SEC:-300}"
-MIN_FREE_KB="${MIN_FREE_KB:-102400}"
+# Small fang SD (~100MiB) — keep a modest reserve, not 100MiB
+MIN_FREE_KB="${MIN_FREE_KB:-8192}"
 RUNDIR="${RUNDIR:-/tmp/localcam}"
 RTSP_URL="${RTSP_URL:-rtsp://127.0.0.1:554/unicast}"
-FFMPEG_BIN="${FFMPEG_BIN:-}"
-# Prefer any available arm ffmpeg/openRTSP on fang SD
+RECORDER_BIN="${RECORDER_BIN:-}"
+# Prefer lightweight rtsp-h264 (does not wedge the SoC). SONiX ffmpeg is fallback only.
 for c in \
-  "$FH_BIN/ffmpeg" /media/mmcblk1p2/data/bin/ffmpeg /media/mmcblk0p2/data/bin/ffmpeg \
-  "$FH_BIN/openRTSP" /usr/bin/ffmpeg
+  /media/mmcblk0p1/lc/bin/rtsp-h264 /media/mmcblk1p1/lc/bin/rtsp-h264 \
+  "$LC_ROOT/bin/rtsp-h264" /usr/local/bin/rtsp-h264 \
+  /media/mmcblk0p2/data/test/ffmpeg/ffmpeg \
+  /media/mmcblk1p2/data/test/ffmpeg/ffmpeg \
+  "$FH_BIN/ffmpeg" /usr/bin/ffmpeg
 do
-  [ -x "$c" ] && FFMPEG_BIN=$c && break
+  [ -x "$c" ] && RECORDER_BIN=$c && break
 done
+FFMPEG_BIN=
 
 have_sd() {
   mountpoint=$(echo "$REC_ROOT" | cut -d/ -f1-3)
@@ -45,7 +50,7 @@ prune() {
     free=$(free_kb)
     [ -n "$free" ] || break
     [ "$free" -ge "$MIN_FREE_KB" ] && break
-    oldest=$(ls -1tr "$REC_ROOT"/seg_*.mkv "$REC_ROOT"/seg_*.ts 2>/dev/null | head -n 1)
+    oldest=$(ls -1tr "$REC_ROOT"/seg_*.mkv "$REC_ROOT"/seg_*.ts "$REC_ROOT"/seg_*.mp4 "$REC_ROOT"/seg_*.h264 2>/dev/null | head -n 1)
     [ -n "$oldest" ] || break
     rm -f "$oldest"
     echo "recorder: pruned $oldest"
@@ -69,19 +74,75 @@ record_loop() {
       continue
     fi
     ts=$(date +%Y%m%d_%H%M%S 2>/dev/null || echo out)
-    out="$REC_ROOT/seg_${ts}.mkv"
-    if [ -n "$FFMPEG_BIN" ]; then
-      "$FFMPEG_BIN" -y -rtsp_transport tcp -i "$RTSP_URL" -t "$SEG_SEC" \
-        -c copy -an "$out" >>/tmp/localcam-recorder.log 2>&1 || {
-        echo "recorder: segment failed"
-        sleep 3
-      }
-    else
-      # No ffmpeg on camera: mark ready but idle (host-side pull can use same URL)
-      echo "recorder: no ffmpeg on device — idle (stream still available at $RTSP_URL)"
-      echo "idle-no-ffmpeg" > "$RUNDIR/recorder.state"
-      sleep 60
+    case "$RECORDER_BIN" in
+      *rtsp-h264)
+        out="$REC_ROOT/seg_${ts}.h264"
+        if ! pidof snx_rtsp_server >/dev/null 2>&1; then
+          echo "recorder: waiting for RTSP"
+          sleep 5
+          continue
+        fi
+        # Ensure H.264 :554 is listening (MJPEG-only leaves connect refused)
+        if ! netstat -lnt 2>/dev/null | grep -qE '[.:]554 '; then
+          echo "recorder: RTSP :554 not listening — retry"
+          sleep 5
+          continue
+        fi
+        nice -n 10 "$RECORDER_BIN" -t "$SEG_SEC" "$RTSP_URL" > "$out" \
+          2>>/tmp/localcam-recorder.log || {
+          echo "recorder: rtsp-h264 segment failed"
+          rm -f "$out"
+          sleep 3
+          continue
+        }
+        ;;
+      *ffmpeg*)
+        out="$REC_ROOT/seg_${ts}.ts"
+        hard=$((SEG_SEC + 30))
+        # Watchdog — SONiX ffmpeg has wedged this SoC when RTSP stalls
+        nice -n 15 "$RECORDER_BIN" -y -loglevel error \
+          -rtsp_transport udp -i "$RTSP_URL" -t "$SEG_SEC" \
+          -c copy -an -f mpegts "$out" >>/tmp/localcam-recorder.log 2>&1 &
+        fpid=$!
+        w=0
+        while [ "$w" -lt "$hard" ]; do
+          kill -0 "$fpid" 2>/dev/null || break
+          w=$((w + 1))
+          sleep 1
+        done
+        if kill -0 "$fpid" 2>/dev/null; then
+          echo "recorder: watchdog killing ffmpeg pid=$fpid"
+          kill -9 "$fpid" 2>/dev/null || true
+          killall -9 ffmpeg 2>/dev/null || true
+          rm -f "$out"
+        fi
+        wait "$fpid" 2>/dev/null || true
+        ;;
+      *)
+        echo "recorder: no recorder binary — idle (stream at $RTSP_URL)"
+        echo "idle-no-tool" > "$RUNDIR/recorder.state"
+        sleep 60
+        continue
+        ;;
+    esac
+    sz=$(wc -c < "$out" 2>/dev/null | tr -d ' ')
+    [ -n "$sz" ] && [ "$sz" -gt 4096 ] || rm -f "$out"
+  done
+  echo "stopped" > "$RUNDIR/recorder.state"
+}
+
+# Watch for host-pushed segments (UDP loopback to self does not work on this SoC).
+watch_loop() {
+  echo "recording" > "$RUNDIR/recorder.state"
+  echo "recorder: host-assisted watch mode → $REC_ROOT"
+  while [ -f "$RUNDIR/recorder.run" ]; do
+    prune
+    # Fresh segment within last ~2 minutes ⇒ stay "recording"
+    fresh=$(find "$REC_ROOT" -name 'seg_*' -mmin -2 2>/dev/null | head -n 1)
+    if [ -n "$fresh" ]; then
+      echo "recording" > "$RUNDIR/recorder.state"
     fi
+    sleep 10
   done
   echo "stopped" > "$RUNDIR/recorder.state"
 }
@@ -98,7 +159,13 @@ start() {
     return 1
   fi
   touch "$RUNDIR/recorder.run"
-  record_loop &
+  # Prefer host-assisted watch: on-camera RTSP UDP to 127.0.0.1 delivers no packets.
+  # Optional: RECORDER_LOCAL=1 to attempt on-device rtsp-h264/ffmpeg anyway.
+  if [ "${RECORDER_LOCAL:-0}" = "1" ]; then
+    record_loop &
+  else
+    watch_loop &
+  fi
   echo $! > "$RUNDIR/recorder.pid"
   echo "recorder: started → $REC_ROOT (seg ${SEG_SEC}s)"
 }

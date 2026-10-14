@@ -19,8 +19,10 @@ IP=$($IFCFG wlan0 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p' | head
 case "$IP" in 192.168.4.*) echo "onvif-lite: skip on AP IP"; exit 0 ;; esac
 
 URI="rtsp://${IP}:554/unicast"
-XADDR="http://${IP}:${PORT}/onvif/device_service"
-mkdir -p "$RUNDIR/onvif/cgi-bin" "$RUNDIR/onvif/onvif"
+# BusyBox httpd only treats /cgi-bin/* as CGI (POST to /onvif/* → 501)
+XADDR="http://${IP}:${PORT}/cgi-bin/device_service"
+MEDIA_XADDR="http://${IP}:${PORT}/cgi-bin/media_service"
+mkdir -p "$RUNDIR/onvif/cgi-bin"
 
 # Single CGI that inspects SOAP Action / body keywords
 cat > "$RUNDIR/onvif/cgi-bin/device_service" <<EOF
@@ -56,9 +58,10 @@ SOAP
      <tt:XAddr>${XADDR}</tt:XAddr>
     </tt:Device>
     <tt:Media xmlns:tt="http://www.onvif.org/ver10/schema">
-     <tt:XAddr>http://${IP}:${PORT}/onvif/media_service</tt:XAddr>
+     <tt:XAddr>${MEDIA_XADDR}</tt:XAddr>
      <tt:StreamingCapabilities>
       <tt:RTP_TCP>true</tt:RTP_TCP>
+      <tt:RTP_UDP>true</tt:RTP_UDP>
      </tt:StreamingCapabilities>
     </tt:Media>
    </tds:Capabilities>
@@ -150,18 +153,42 @@ esac
 EOF
 chmod +x "$RUNDIR/onvif/cgi-bin/media_service"
 
-# Alias paths some clients use
-cp "$RUNDIR/onvif/cgi-bin/device_service" "$RUNDIR/onvif/onvif/device_service"
-cp "$RUNDIR/onvif/cgi-bin/media_service" "$RUNDIR/onvif/onvif/media_service"
-chmod +x "$RUNDIR/onvif/onvif/"*
-
 echo "A:*" > "$RUNDIR/onvif-httpd.conf"
-[ -f "$RUNDIR/onvif.pid" ] && kill "$(cat "$RUNDIR/onvif.pid")" 2>/dev/null || true
+# Stop previous ONVIF httpd only (never killall — admin :80 shares the binary name)
+if [ -f "$RUNDIR/onvif.pid" ]; then
+  kill "$(cat "$RUNDIR/onvif.pid")" 2>/dev/null || true
+  rm -f "$RUNDIR/onvif.pid"
+  sleep 1
+fi
+# Clear stale listener on :8000 if needed
+if netstat -lnt 2>/dev/null | grep -qE "[.:]${PORT} "; then
+  for p in $(pidof httpd 2>/dev/null); do
+    cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null || true)
+    case "$cmd" in
+      *-p\ ${PORT}*|*-p\ ${PORT}) kill "$p" 2>/dev/null || true ;;
+    esac
+  done
+  sleep 1
+fi
 if [ -x "$FH_HTTPD" ]; then
   "$FH_HTTPD" -h "$RUNDIR/onvif" -p "$PORT" -c "$RUNDIR/onvif-httpd.conf" \
     >/tmp/localcam-onvif.log 2>&1 &
   echo $! > "$RUNDIR/onvif.pid"
-  echo "onvif-lite: $XADDR media→$URI"
+  sleep 1
+  # Resolve real listener pid (shell $! can race)
+  for p in $(pidof httpd 2>/dev/null); do
+    cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null || true)
+    case "$cmd" in
+      *-p\ ${PORT}*|*-p\ ${PORT}) echo "$p" > "$RUNDIR/onvif.pid"; break ;;
+    esac
+  done
+  if kill -0 "$(cat "$RUNDIR/onvif.pid")" 2>/dev/null && \
+     netstat -lnt 2>/dev/null | grep -qE "[.:]${PORT} "; then
+    echo "onvif-lite: $XADDR media→$URI"
+  else
+    echo "onvif-lite: httpd failed — see /tmp/localcam-onvif.log" >&2
+    cat /tmp/localcam-onvif.log 2>/dev/null | tail -n 10
+  fi
 fi
 
 # WS-Discovery via static ARMv5 wsd-lite (preferred), else skip

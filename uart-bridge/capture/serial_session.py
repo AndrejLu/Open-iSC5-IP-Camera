@@ -16,7 +16,8 @@ from pathlib import Path
 import serial
 from serial import SerialException
 
-DEFAULT_PORT = "/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00"
+from serial_port import default_serial_port
+DEFAULT_PORT = default_serial_port() or "/dev/ttyACM0"
 PROMPT_RE = re.compile(r"(login:\s*$|Password:\s*$|[$#]\s*$)", re.M)
 
 

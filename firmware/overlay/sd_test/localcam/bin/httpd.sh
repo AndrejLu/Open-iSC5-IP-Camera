@@ -63,7 +63,7 @@ stage_admin() {
   fi
   if [ -f "$ADMIN_ROOT/cgi-bin/admin.sh" ]; then
     chmod +x "$ADMIN_ROOT/cgi-bin/admin.sh"
-    for ep in admin_login admin_logout admin_status admin_password admin_wifi admin_csrf; do
+    for ep in admin_login admin_logout admin_status admin_password admin_wifi admin_net admin_csrf admin_preview; do
       cp -a "$ADMIN_ROOT/cgi-bin/admin.sh" "$RUNDIR/www/cgi-bin/$ep"
     done
   fi
@@ -102,8 +102,24 @@ chmod +x "$RUNDIR/www/cgi-bin/"* 2>/dev/null || true
 
 echo "A:*" > "$RUNDIR/httpd.conf"
 
-# Free port 80: stock Boa serves an empty page on this unit
-killall boa httpd dnsd 2>/dev/null || true
+# Free port 80 only — do NOT killall httpd (ONVIF uses a second BusyBox httpd on :8000)
+killall boa 2>/dev/null || true
+if [ -f "$RUNDIR/httpd.pid" ]; then
+  kill "$(cat "$RUNDIR/httpd.pid")" 2>/dev/null || true
+  rm -f "$RUNDIR/httpd.pid"
+fi
+# Fallback: free :80 if a stale httpd still holds it (leave :8000 alone)
+if netstat -lnt 2>/dev/null | grep -qE '[.:]80 '; then
+  for p in $(pidof httpd 2>/dev/null); do
+    cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null || true)
+    case "$cmd" in
+      *-p\ 8000*|*-p\ 8000) ;;
+      *) kill "$p" 2>/dev/null || true ;;
+    esac
+  done
+  sleep 1
+fi
+killall dnsd 2>/dev/null || true
 sleep 1
 
 if [ "$MODE" = "ap" ] && [ -x "$DNSD" ]; then

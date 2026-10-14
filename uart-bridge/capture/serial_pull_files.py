@@ -14,7 +14,8 @@ from pathlib import Path
 
 import serial
 
-DEFAULT_PORT = "/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00"
+from serial_port import default_serial_port
+DEFAULT_PORT = default_serial_port() or "/dev/ttyACM0"
 FULL_SIZE = 16 * 1024 * 1024
 HEX_LINE = re.compile(r"(?m)^([0-9a-f]{32})\s*$")
 

@@ -8,7 +8,16 @@ if [[ ! -x "$PY" ]]; then
   PY="$(command -v python3)"
 fi
 
-PORT="${PORT:-/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00}"
+PORT="${PORT:-}"
+if [[ -z "$PORT" ]]; then
+  for cand in /dev/serial/by-id/usb-UDOO_UDOO_X86__*-if00 \
+              /dev/serial/by-id/usb-Intel_Arduino_101_*-if00; do
+    [[ -e "$cand" ]] || continue
+    PORT="$cand"
+    break
+  done
+fi
+PORT="${PORT:-/dev/ttyACM0}"
 BAUD="${BAUD:-115200}"
 DURATION="${DURATION:-180}"
 LOG_DIR="${LOG_DIR:-$ROOT/logs}"

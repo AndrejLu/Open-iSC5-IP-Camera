@@ -88,7 +88,7 @@ button:disabled{opacity:.5}
         var o=document.createElement('option');
         o.value=n.ssid;
         var sig=n.signal||'';
-        // Strongest first from API; show e.g. "<HOME_SSID> — 92%"
+        // Strongest first from API; show e.g. "MyNetwork — 92%"
         o.textContent=sig?(n.ssid+' — '+sig):n.ssid;
         sel.appendChild(o);
       });

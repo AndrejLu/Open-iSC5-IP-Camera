@@ -21,22 +21,40 @@ button.secondary{background:#3a4a55}
 .row{display:flex;gap:.5rem}
 .row>*{flex:1}
 pre{white-space:pre-wrap;font-size:.85rem}
+.preview{width:100%;aspect-ratio:16/9;background:#0f1418;border-radius:6px;object-fit:contain;display:block}
+.preview-meta{color:var(--muted);font-size:.8rem;margin:.5rem 0 0}
+.svc{list-style:none;margin:0;padding:0}
+.svc li{display:flex;align-items:flex-start;gap:.65rem;padding:.45rem 0;border-top:1px solid #2c3a44}
+.svc li:first-child{border-top:none;padding-top:0}
+.dot{width:.65rem;height:.65rem;border-radius:50%;margin-top:.35rem;flex-shrink:0;background:#6a7a88}
+.dot.on{background:#5dce8a}
+.dot.off{background:#e05555}
+.svc-name{font-weight:600;font-size:.95rem}
+.svc-detail{color:var(--muted);font-size:.8rem;margin-top:.1rem}
+.svc-state{margin-left:auto;font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;padding-top:.2rem}
+.meta{color:var(--muted);font-size:.9rem;margin:0 0 .75rem}
 </style>
 </head>
 <body>
 <main>
   <h1>Camera</h1>
   <p id="who" style="color:var(--muted)">Sign in to manage this device.</p>
-  <div id="login">
+  <form id="login" action="#" method="post">
     <label for="pw">Administrator password</label>
     <input type="password" id="pw" autocomplete="current-password">
-    <button type="button" id="go">Sign in</button>
+    <button type="submit" id="go">Sign in</button>
     <p class="err" id="err"></p>
-  </div>
+  </form>
   <div id="dash" style="display:none">
     <section>
-      <h2>Status</h2>
-      <pre id="st"></pre>
+      <h2>Live preview</h2>
+      <img class="preview" id="preview" alt="Camera preview" src="">
+      <p class="preview-meta" id="previewmeta">Refreshing…</p>
+    </section>
+    <section>
+      <h2>Services</h2>
+      <p class="meta" id="stmeta"></p>
+      <ul class="svc" id="svclist"></ul>
       <div class="row">
         <button type="button" class="secondary" id="refresh">Refresh</button>
         <button type="button" class="secondary" id="logout">Sign out</button>
@@ -50,6 +68,22 @@ pre{white-space:pre-wrap;font-size:.85rem}
       <input type="password" id="newpw" autocomplete="new-password">
       <button type="button" id="chpw">Update password</button>
       <p id="pwmsg"></p>
+    </section>
+    <section>
+      <h2>Network</h2>
+      <p class="meta">LAN addressing after Wi-Fi connects. Changing a static IP may require opening the new address in your browser.</p>
+      <label><input type="radio" name="ipmode" id="mode_dhcp" value="dhcp" style="width:auto" checked> DHCP</label>
+      <label><input type="radio" name="ipmode" id="mode_static" value="static" style="width:auto"> Static IP</label>
+      <div id="staticfields">
+        <label for="nip">IP address</label>
+        <input id="nip" inputmode="decimal" autocomplete="off" placeholder="192.168.1.50">
+        <label for="nnm">Netmask</label>
+        <input id="nnm" inputmode="decimal" autocomplete="off" placeholder="255.255.255.0">
+        <label for="ngw">Gateway</label>
+        <input id="ngw" inputmode="decimal" autocomplete="off" placeholder="192.168.1.1">
+      </div>
+      <button type="button" id="savenet">Save network</button>
+      <p id="netmsg"></p>
     </section>
     <section>
       <h2>Saved Wi-Fi</h2>
@@ -73,21 +107,72 @@ pre{white-space:pre-wrap;font-size:.85rem}
       body:JSON.stringify(Object.assign({csrf:csrf()},body||{}))})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};});});
   }
+  var previewTimer=null;
+  function tickPreview(){
+    var img=document.getElementById('preview');
+    var meta=document.getElementById('previewmeta');
+    img.onload=function(){meta.textContent='Updated '+new Date().toLocaleTimeString();};
+    img.onerror=function(){meta.textContent='Preview unavailable (capture failed or busy)';};
+    img.src='/cgi-bin/admin_preview?t='+Date.now();
+  }
+  function startPreview(){
+    tickPreview();
+    if(previewTimer) clearInterval(previewTimer);
+    previewTimer=setInterval(tickPreview,1500);
+  }
+  function stopPreview(){
+    if(previewTimer){clearInterval(previewTimer);previewTimer=null;}
+  }
   function showDash(){
     document.getElementById('login').style.display='none';
     document.getElementById('dash').style.display='block';
     document.getElementById('who').textContent='Signed in';
     loadStatus();
+    startPreview();
   }
   function loadStatus(){
-    fetch('/cgi-bin/admin_status').then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    fetch('/cgi-bin/admin_status',{credentials:'same-origin'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
       .then(function(x){
-        if(!x.ok){document.getElementById('st').textContent=x.j.error||'auth required';return;}
-        document.getElementById('st').textContent=JSON.stringify(x.j,null,2);
-        if(x.j.ssid) document.getElementById('ssid').value=x.j.ssid;
+        var meta=document.getElementById('stmeta');
+        var list=document.getElementById('svclist');
+        if(!x.ok){
+          meta.textContent=x.j.error||'auth required';
+          list.innerHTML='';
+          return;
+        }
+        var j=x.j;
+        meta.textContent=(j.ssid?('Wi-Fi: '+j.ssid+' · '):'')+(j.ip?('IP '+j.ip+' · '):'')+'state '+j.state;
+        list.innerHTML='';
+        (j.services||[]).forEach(function(s){
+          var li=document.createElement('li');
+          var on=!!s.running;
+          li.innerHTML='<span class="dot '+(on?'on':'off')+'"></span>'+
+            '<div><div class="svc-name"></div><div class="svc-detail"></div></div>'+
+            '<span class="svc-state">'+(on?'up':'down')+'</span>';
+          li.querySelector('.svc-name').textContent=s.name;
+          li.querySelector('.svc-detail').textContent=s.detail||'';
+          list.appendChild(li);
+        });
+        if(j.ssid) document.getElementById('ssid').value=j.ssid;
+        fillNetForm(j);
       });
   }
-  document.getElementById('go').onclick=function(){
+  function fillNetForm(j){
+    var mode=(j.ip_mode==='static')?'static':'dhcp';
+    document.getElementById('mode_dhcp').checked=mode==='dhcp';
+    document.getElementById('mode_static').checked=mode==='static';
+    document.getElementById('nip').value=j.cfg_ip||j.ip||'';
+    document.getElementById('nnm').value=j.cfg_netmask||j.netmask||'255.255.255.0';
+    document.getElementById('ngw').value=j.cfg_gateway||j.gateway||'';
+    toggleStaticFields();
+  }
+  function toggleStaticFields(){
+    var on=document.getElementById('mode_static').checked;
+    document.getElementById('staticfields').style.opacity=on?'1':'0.45';
+    ['nip','nnm','ngw'].forEach(function(id){document.getElementById(id).disabled=!on;});
+  }
+  document.getElementById('login').onsubmit=function(e){
+    e.preventDefault();
     jpost('/cgi-bin/admin_login',{password:document.getElementById('pw').value})
       .then(function(x){
         if(!x.ok){document.getElementById('err').textContent=x.j.error||'Login failed';return;}
@@ -95,6 +180,7 @@ pre{white-space:pre-wrap;font-size:.85rem}
       }).catch(function(e){document.getElementById('err').textContent=String(e);});
   };
   document.getElementById('logout').onclick=function(){
+    stopPreview();
     jpost('/cgi-bin/admin_logout',{}).then(function(){location.reload();});
   };
   document.getElementById('refresh').onclick=loadStatus;
@@ -111,6 +197,22 @@ pre{white-space:pre-wrap;font-size:.85rem}
   document.getElementById('opennet').onchange=function(){
     document.getElementById('psk').disabled=this.checked;
   };
+  document.getElementById('mode_dhcp').onchange=toggleStaticFields;
+  document.getElementById('mode_static').onchange=toggleStaticFields;
+  document.getElementById('savenet').onclick=function(){
+    var msg=document.getElementById('netmsg');
+    var mode=document.getElementById('mode_static').checked?'static':'dhcp';
+    jpost('/cgi-bin/admin_net',{
+      mode:mode,
+      ip:document.getElementById('nip').value.trim(),
+      netmask:document.getElementById('nnm').value.trim(),
+      gateway:document.getElementById('ngw').value.trim()
+    }).then(function(x){
+      msg.className=x.ok?'ok':'err';
+      msg.textContent=x.ok?(x.j.message||'Saved'):(x.j.error||'failed');
+      if(x.ok) setTimeout(loadStatus,1500);
+    });
+  };
   document.getElementById('savewifi').onclick=function(){
     var msg=document.getElementById('wifimsg');
     jpost('/cgi-bin/admin_wifi',{
@@ -122,6 +224,7 @@ pre{white-space:pre-wrap;font-size:.85rem}
       msg.textContent=x.ok?(x.j.message||'Saved'):(x.j.error||'failed');
     });
   };
+  toggleStaticFields();
   // Seed CSRF cookie, then resume session if already signed in
   fetch('/cgi-bin/admin_csrf',{credentials:'same-origin'})
     .then(function(){return fetch('/cgi-bin/admin_status',{credentials:'same-origin'});})

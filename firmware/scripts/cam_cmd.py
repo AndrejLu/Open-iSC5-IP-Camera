@@ -5,7 +5,8 @@ import argparse, re, sys, time, uuid
 from pathlib import Path
 import serial
 
-PORT = "/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00"
+from serial_port import default_serial_port
+PORT = default_serial_port() or "/dev/ttyACM0"
 
 
 def open_port(port: str = PORT) -> serial.Serial:
@@ -91,24 +92,24 @@ def ensure_shell(ser, user=None, password=None) -> bool:
             time.sleep(0.02)
     # Reach a clean login prompt (do not send shell cmds as username)
     for _ in range(4):
-        wl("")
+        wl(ser, "")
         time.sleep(0.35)
         chunk = ser.read(8192).decode("utf-8", errors="replace")
         buf += chunk
         if "login:" in chunk.lower():
             break
         if "Password:" in chunk:
-            wl("")  # abort half-login
+            wl(ser, "")  # abort half-login
             time.sleep(0.4)
             ser.read(4096)
-    wl(user)
+    wl(ser, user)
     time.sleep(0.7)
     ser.read(4096)
-    wl(password)
+    wl(ser, password)
     time.sleep(1.5)
     ser.read(8192)
     m2 = f"SH_{uuid.uuid4().hex[:6]}"
-    wl(f"echo {m2}")
+    wl(ser, f"echo {m2}")
     t0 = time.monotonic()
     buf = ""
     while time.monotonic() - t0 < 5:

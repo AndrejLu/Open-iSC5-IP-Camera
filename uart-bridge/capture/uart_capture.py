@@ -26,7 +26,8 @@ except ImportError as exc:  # pragma: no cover
     raise SystemExit(1) from exc
 
 
-DEFAULT_PORT = "/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00"
+from serial_port import default_serial_port
+DEFAULT_PORT = default_serial_port() or "/dev/ttyACM0"
 DEFAULT_BAUD = 115200
 DEFAULT_DURATION = 180
 

@@ -230,6 +230,72 @@ sta_has_ip() {
   ifconfig "$WLAN" 2>/dev/null | grep -q "inet addr:"
 }
 
+wifi_conf_get() {
+  # wifi_conf_get KEY [default]
+  key=$1
+  def=${2:-}
+  [ -f "$WIFI_CONF" ] || { echo "$def"; return; }
+  val=$(sed -n "s/^${key}=//p" "$WIFI_CONF" 2>/dev/null | head -n 1)
+  [ -n "$val" ] && echo "$val" || echo "$def"
+}
+
+ip_mode() {
+  m=$(wifi_conf_get ip_mode dhcp)
+  case "$m" in
+    static|STATIC) echo static ;;
+    *) echo dhcp ;;
+  esac
+}
+
+# Apply saved static IP (requires association). No-op for dhcp mode.
+apply_static_ip() {
+  ip=$(wifi_conf_get ip_addr)
+  nm=$(wifi_conf_get ip_netmask 255.255.255.0)
+  gw=$(wifi_conf_get ip_gateway)
+  [ -n "$ip" ] || { log "static IP missing in wifi.conf"; return 1; }
+  killall udhcpc 2>/dev/null || true
+  kill_pidfile "$RUNDIR/udhcpc.pid"
+  # Clear previous address then set static
+  ifconfig "$WLAN" 0.0.0.0 2>/dev/null || true
+  ifconfig "$WLAN" "$ip" netmask "$nm" || {
+    log "ifconfig static failed ip=$ip nm=$nm"
+    return 1
+  }
+  route del default 2>/dev/null || true
+  if [ -n "$gw" ]; then
+    route add default gw "$gw" dev "$WLAN" 2>/dev/null || \
+      route add default gw "$gw" 2>/dev/null || \
+      log "default route failed gw=$gw"
+  fi
+  log "static IP applied $ip/$nm gw=${gw:-none}"
+  return 0
+}
+
+start_dhcp() {
+  killall udhcpc 2>/dev/null || true
+  kill_pidfile "$RUNDIR/udhcpc.pid"
+  udhcpc -i "$WLAN" -b -t 10 -T 3 -p "$RUNDIR/udhcpc.pid" >/tmp/localcam-udhcpc.log 2>&1 &
+  log "udhcpc started"
+}
+
+# Ensure addressing matches wifi.conf (call when associated).
+ensure_sta_address() {
+  sta_associated || return 1
+  if [ "$(ip_mode)" = static ]; then
+    want=$(wifi_conf_get ip_addr)
+    cur=$(ifconfig "$WLAN" 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p' | head -n 1)
+    if [ -n "$want" ] && [ "$cur" = "$want" ]; then
+      return 0
+    fi
+    apply_static_ip
+  else
+    # DHCP: start client if not already running
+    if ! pidof udhcpc >/dev/null 2>&1; then
+      start_dhcp
+    fi
+  fi
+}
+
 # LAN usable: associated, has non-AP IP. Does NOT require Internet/DNS.
 sta_lan_ok() {
   sta_associated || return 1
@@ -274,8 +340,12 @@ start_sta() {
     return 1
   }
   set_state "station-connecting"
-  # DHCP once associated; -b background, -t retries
-  udhcpc -i "$WLAN" -b -t 10 -T 3 -p "$RUNDIR/udhcpc.pid" >/tmp/localcam-udhcpc.log 2>&1 &
+  if [ "$(ip_mode)" = static ]; then
+    log "STA addressing=static ip=$(wifi_conf_get ip_addr)"
+  else
+    # DHCP client; renews once link is up
+    start_dhcp
+  fi
   return 0
 }
 
@@ -287,14 +357,21 @@ wait_sta() {
       log "setup session active — abort wait"
       return 2
     fi
+    # Once associated, apply static IP (or keep DHCP running)
+    if sta_associated; then
+      ensure_sta_address || true
+    fi
     if sta_lan_ok; then
       ip=$(ifconfig "$WLAN" 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p' | head -n 1)
       set_state "station"
       rm -f "$ERR_FILE"
-      log "STA connected with IP $ip"
+      log "STA connected with IP $ip mode=$(ip_mode)"
       # LAN admin UI on :80 (replaces empty stock Boa page)
       HTTPD_SH="$(dirname "$0")/httpd.sh"
       [ -x "$HTTPD_SH" ] && "$HTTPD_SH" sta >>/tmp/localcam-httpd.log 2>&1 || true
+      # Refresh ONVIF/WS-D with current IP (safe if already running)
+      SVC="$(dirname "$0")/services.sh"
+      [ -x "$SVC" ] && "$SVC" start-onvif >>/tmp/localcam-onvif.log 2>&1 || true
       return 0
     fi
     if [ $((n % 15)) -eq 0 ]; then
@@ -306,6 +383,22 @@ wait_sta() {
   echo "sta_timeout" > "$ERR_FILE"
   log "STA timeout after ${timeout}s"
   return 1
+}
+
+# Re-apply addressing without tearing down Wi-Fi (admin network save).
+cmd_apply_ip() {
+  if ! sta_associated; then
+    log "apply-ip: not associated"
+    return 1
+  fi
+  if [ "$(ip_mode)" = static ]; then
+    apply_static_ip
+  else
+    # Bounce DHCP for a fresh lease
+    ifconfig "$WLAN" 0.0.0.0 2>/dev/null || true
+    route del default 2>/dev/null || true
+    start_dhcp
+  fi
 }
 
 # Persist wifi.conf atomically (caller writes to tmp then calls this)
@@ -422,7 +515,7 @@ cmd_monitor() {
 }
 
 usage() {
-  echo "Usage: $0 {start|stop|status|setup|release-setup|fallback|monitor|ssid}"
+  echo "Usage: $0 {start|stop|status|setup|release-setup|fallback|monitor|ssid|apply-ip}"
 }
 
 case "${1:-}" in
@@ -434,5 +527,6 @@ case "${1:-}" in
   fallback) cmd_fallback ;;
   monitor) cmd_monitor ;;
   ssid) ap_ssid ;;
+  apply-ip) cmd_apply_ip ;;
   *) usage; exit 1 ;;
 esac

@@ -1,0 +1,4 @@
+# Host-side helpers (cam_ssh, host_recorder, serial_*). Install into a venv:
+#   python3 -m venv firmware/.venv
+#   firmware/.venv/bin/pip install -r firmware/scripts/requirements.txt
+paramiko>=3.0

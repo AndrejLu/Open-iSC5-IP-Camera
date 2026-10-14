@@ -1,36 +1,74 @@
-# secrets / device config
+# --- Secrets & device config (never commit) ---
 **/wifi.conf
 **/admin.conf
+**/setup.lock
 **/*password*
 **/*.pem
 **/*token*
 **/*.key
+**/.env
+**/.env.*
+**/cam_creds.env
+firmware/private/
+**/private/
 
-# backups / dumps / recordings
-**/sd-archive/
-**/uart-bridge/backups/
+# --- Flash dumps, manufacturer extracts, archives ---
+firmware/stock/
+firmware/sd-archive/
+firmware/images/*.cramfs
+firmware/images/*.bin
+firmware/images/*.img
+*.cramfs
+uart-bridge/backups/
 **/*.bin
 **/*.img
+# Keep hash manifests / docs; ignore binary dumps only
+!uart-bridge/docs/**
+
+# --- Recordings & local logs ---
 **/recordings/
-**/private/
 **/*.mkv
 **/*.mp4
 **/*.ts
-
-# build / venv / tools
-**/firmware/.venv/
-**/firmware/build/rootfs/
-**/firmware/tools/ffmpeg-*/
-**/*.pyc
-**/__pycache__/
-**/venv/
-**/.venv/
-firmware/stock/
-firmware/tools/
+uart-bridge/logs/
 firmware/progress/
-uart-bridge/backups/
+*.log
+
+# --- Build output & generated binaries ---
+firmware/build/rootfs/
+firmware/build/bin/
+**/__pycache__/
+**/*.pyc
+**/*.armv5
+**/*.stripped
+**/*.min
+firmware/overlay/sd_test/localcam/bin/wsd-lite
+firmware/overlay/sd_test/localcam/bin/rtsp-h264
+firmware/overlay/sd_test/localcam/bin/rtsp-jpeg
+firmware/overlay/sd_test/localcam/bin/v4l2-jpeg
+firmware/overlay/sd_test/*.tgz
+firmware/overlay/sd_test/*.tar
+
+# --- Toolchains, SDKs, vendored host tools (obtain separately) ---
+firmware/tools/
+**/ffmpeg-*-static/
+**/ffmpeg-*-static/**
+
+# --- Virtualenvs ---
+**/.venv/
+**/venv/
 uart-bridge/venv/
-uart-bridge/**/*.bin
-*.cramfs
-firmware/images/*.cramfs
-firmware/images/*.bin
+firmware/.venv/
+
+# --- Editor / OS ---
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Machine-specific host logs (do not publish)
+uart-bridge/docs/compile_log.txt
+uart-bridge/docs/host_inventory.txt
+uart-bridge/docs/upload_log.txt
+uart-bridge/docs/dfu_direct.txt

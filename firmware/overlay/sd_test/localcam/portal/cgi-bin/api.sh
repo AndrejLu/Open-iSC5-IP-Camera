@@ -179,12 +179,21 @@ case "$route" in
     fi
     key_mgmt=WPA-PSK
     [ "$open" = "true" ] && key_mgmt=NONE && psk=
+    # Preserve IP addressing if previously configured
+    keep_mode=$(sed -n 's/^ip_mode=//p' "$CFGDIR/wifi.conf" 2>/dev/null | head -n 1)
+    keep_ip=$(sed -n 's/^ip_addr=//p' "$CFGDIR/wifi.conf" 2>/dev/null | head -n 1)
+    keep_nm=$(sed -n 's/^ip_netmask=//p' "$CFGDIR/wifi.conf" 2>/dev/null | head -n 1)
+    keep_gw=$(sed -n 's/^ip_gateway=//p' "$CFGDIR/wifi.conf" 2>/dev/null | head -n 1)
     umask 077
     {
       printf 'ssid=%s\n' "$ssid"
       printf 'psk=%s\n' "$psk"
       printf 'key_mgmt=%s\n' "$key_mgmt"
       [ "$hidden" = "true" ] && echo "hidden=1" || echo "hidden=0"
+      [ -n "$keep_mode" ] && printf 'ip_mode=%s\n' "$keep_mode"
+      [ -n "$keep_ip" ] && printf 'ip_addr=%s\n' "$keep_ip"
+      [ -n "$keep_nm" ] && printf 'ip_netmask=%s\n' "$keep_nm"
+      [ -n "$keep_gw" ] && printf 'ip_gateway=%s\n' "$keep_gw"
     } > "$CFGDIR/wifi.conf.tmp"
     mv "$CFGDIR/wifi.conf.tmp" "$CFGDIR/wifi.conf"
     sync

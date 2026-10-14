@@ -5,7 +5,8 @@ import argparse, hashlib, re, sys, time, uuid
 from pathlib import Path
 import serial
 
-PORT = "/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00"
+from serial_port import default_serial_port
+PORT = default_serial_port() or "/dev/ttyACM0"
 HEX_LINE = re.compile(r"(?m)^([0-9a-f]{32})\s*$")
 MAX_LINE = 100
 

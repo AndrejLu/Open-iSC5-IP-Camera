@@ -19,8 +19,10 @@ IP=$($IFCFG wlan0 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p' | head
 case "$IP" in 192.168.4.*) echo "onvif-lite: skip on AP IP"; exit 0 ;; esac
 
 URI="rtsp://${IP}:554/unicast"
-XADDR="http://${IP}:${PORT}/onvif/device_service"
-mkdir -p "$RUNDIR/onvif/cgi-bin" "$RUNDIR/onvif/onvif"
+# BusyBox httpd only treats /cgi-bin/* as CGI (POST to /onvif/* → 501)
+XADDR="http://${IP}:${PORT}/cgi-bin/device_service"
+MEDIA_XADDR="http://${IP}:${PORT}/cgi-bin/media_service"
+mkdir -p "$RUNDIR/onvif/cgi-bin"
 
 # Single CGI that inspects SOAP Action / body keywords
 cat > "$RUNDIR/onvif/cgi-bin/device_service" <<EOF
@@ -56,9 +58,10 @@ SOAP
      <tt:XAddr>${XADDR}</tt:XAddr>
     </tt:Device>
     <tt:Media xmlns:tt="http://www.onvif.org/ver10/schema">
-     <tt:XAddr>http://${IP}:${PORT}/onvif/media_service</tt:XAddr>
+     <tt:XAddr>${MEDIA_XADDR}</tt:XAddr>
      <tt:StreamingCapabilities>
       <tt:RTP_TCP>true</tt:RTP_TCP>
+      <tt:RTP_UDP>true</tt:RTP_UDP>
      </tt:StreamingCapabilities>
     </tt:Media>
    </tds:Capabilities>
@@ -150,54 +153,62 @@ esac
 EOF
 chmod +x "$RUNDIR/onvif/cgi-bin/media_service"
 
-# Alias paths some clients use
-cp "$RUNDIR/onvif/cgi-bin/device_service" "$RUNDIR/onvif/onvif/device_service"
-cp "$RUNDIR/onvif/cgi-bin/media_service" "$RUNDIR/onvif/onvif/media_service"
-chmod +x "$RUNDIR/onvif/onvif/"*
-
 echo "A:*" > "$RUNDIR/onvif-httpd.conf"
-[ -f "$RUNDIR/onvif.pid" ] && kill "$(cat "$RUNDIR/onvif.pid")" 2>/dev/null || true
+# Stop previous ONVIF httpd only (never killall — admin :80 shares the binary name)
+if [ -f "$RUNDIR/onvif.pid" ]; then
+  kill "$(cat "$RUNDIR/onvif.pid")" 2>/dev/null || true
+  rm -f "$RUNDIR/onvif.pid"
+  sleep 1
+fi
+# Clear stale listener on :8000 if needed
+if netstat -lnt 2>/dev/null | grep -qE "[.:]${PORT} "; then
+  for p in $(pidof httpd 2>/dev/null); do
+    cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null || true)
+    case "$cmd" in
+      *-p\ ${PORT}*|*-p\ ${PORT}) kill "$p" 2>/dev/null || true ;;
+    esac
+  done
+  sleep 1
+fi
 if [ -x "$FH_HTTPD" ]; then
   "$FH_HTTPD" -h "$RUNDIR/onvif" -p "$PORT" -c "$RUNDIR/onvif-httpd.conf" \
     >/tmp/localcam-onvif.log 2>&1 &
   echo $! > "$RUNDIR/onvif.pid"
-  echo "onvif-lite: $XADDR media→$URI"
+  sleep 1
+  # Resolve real listener pid (shell $! can race)
+  for p in $(pidof httpd 2>/dev/null); do
+    cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null || true)
+    case "$cmd" in
+      *-p\ ${PORT}*|*-p\ ${PORT}) echo "$p" > "$RUNDIR/onvif.pid"; break ;;
+    esac
+  done
+  if kill -0 "$(cat "$RUNDIR/onvif.pid")" 2>/dev/null && \
+     netstat -lnt 2>/dev/null | grep -qE "[.:]${PORT} "; then
+    echo "onvif-lite: $XADDR media→$URI"
+  else
+    echo "onvif-lite: httpd failed — see /tmp/localcam-onvif.log" >&2
+    cat /tmp/localcam-onvif.log 2>/dev/null | tail -n 10
+  fi
 fi
 
-# Minimal WS-Discovery Hello/ProbeMatches via Python if available, else skip
-if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
-  PY=$(command -v python3 || command -v python)
-  cat > "$RUNDIR/onvif-wsd.py" <<PY
-import socket, time
-IP="$IP"; PORT=$PORT; XADDR="$XADDR"
-MSG = """<?xml version="1.0" encoding="UTF-8"?>
-<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery" xmlns:dn="http://www.onvif.org/ver10/network/wsdl">
- <s:Header><a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches</a:Action><a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To></s:Header>
- <s:Body><d:ProbeMatches><d:ProbeMatch>
-  <a:EndpointReference><a:Address>urn:uuid:localcam-isc5</a:Address></a:EndpointReference>
-  <d:Types>dn:NetworkVideoTransmitter</d:Types>
-  <d:Scopes>onvif://www.onvif.org/name/Localcam onvif://www.onvif.org/type/Network_Video_Transmitter</d:Scopes>
-  <d:XAddrs>%s</d:XAddrs>
-  <d:MetadataVersion>1</d:MetadataVersion>
- </d:ProbeMatch></d:ProbeMatches></s:Body></s:Envelope>""" % XADDR
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-try:
-  sock.bind(("", 3702))
-except Exception:
-  raise SystemExit(0)
-sock.settimeout(1.0)
-while True:
-  try:
-    data, addr = sock.recvfrom(8192)
-  except Exception:
-    continue
-  if b"Probe" in data:
-    sock.sendto(MSG.encode(), addr)
-PY
-  "$PY" "$RUNDIR/onvif-wsd.py" >/tmp/localcam-wsd.log 2>&1 &
+# WS-Discovery via static ARMv5 wsd-lite (preferred), else skip
+WSD_BIN=""
+for c in \
+  "$(dirname "$0")/wsd-lite" \
+  "$LC_ROOT/bin/wsd-lite" \
+  /media/mmcblk0p1/lc/bin/wsd-lite \
+  /media/mmcblk1p1/lc/bin/wsd-lite \
+  /media/mmcblk0p2/data/localcam/bin/wsd-lite \
+  /media/mmcblk1p2/data/localcam/bin/wsd-lite \
+  /usr/local/bin/wsd-lite
+do
+  [ -x "$c" ] && WSD_BIN=$c && break
+done
+[ -f "$RUNDIR/wsd.pid" ] && kill "$(cat "$RUNDIR/wsd.pid")" 2>/dev/null || true
+if [ -n "$WSD_BIN" ]; then
+  "$WSD_BIN" "$XADDR" >/tmp/localcam-wsd.log 2>&1 &
   echo $! > "$RUNDIR/wsd.pid"
-  echo "onvif-lite: WS-Discovery on UDP 3702"
+  echo "onvif-lite: WS-Discovery UDP 3702 via $WSD_BIN"
 else
-  echo "onvif-lite: no python — WS-Discovery skipped (HTTP endpoints only)"
+  echo "onvif-lite: wsd-lite missing — WS-Discovery skipped (HTTP only)"
 fi

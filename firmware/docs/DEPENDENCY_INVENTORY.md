@@ -11,7 +11,7 @@
 | Kernel | 2.6.35.12 |
 | Rootfs | cramfs (mtd2 7 MiB) |
 | /etc | JFFS2 (mtd4 1 MiB) |
-| MAC (this unit) | `AA:BB:CC:DD:EE:FF` → AP SSID `Camera-<MAC6>` |
+| MAC (example unit) | last 6 hex digits form AP SSID `Camera-<MAC6>` |
 
 ## MTD (live `/proc/mtd` verified)
 | Dev | Size | Name |

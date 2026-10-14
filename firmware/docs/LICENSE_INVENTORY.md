@@ -11,6 +11,10 @@
 | snx_rtsp_server + libsnx_* | SONiX proprietary | proprietary — retain binary | yes |
 | 8188eu.ko | Realtek/vendor | likely GPL | yes |
 | iSC3S / miio / TUTK | Hualai/Xiaomi | proprietary | **no** |
-| localcam scripts (this project) | project | TBD (document before release) | yes |
+| localcam / uart-bridge project code | this repository | MIT (root `LICENSE`) | yes (source only) |
+| Manufacturer / SONiX proprietary blobs | device extract | proprietary | **not redistributed in this git repo** |
+| Fanghacks / stock BusyBox httpd, Dropbear, etc. | device / fang SD | upstream licenses | obtain separately |
 
 Pin exact upstream URLs/versions when cross-compiling anything new. Prefer reuse of on-device binaries to avoid ABI issues.
+
+Do **not** assign this project’s eventual license to third-party or manufacturer code.
