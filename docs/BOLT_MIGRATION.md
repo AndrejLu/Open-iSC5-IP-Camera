@@ -31,7 +31,10 @@ Place a static ffmpeg at `firmware/tools/ffmpeg-7.0.2-amd64-static/ffmpeg` or in
 
 ## Camera connectivity (this LAN)
 
-Last known address: `192.168.187.180` (verify; DHCP may change).
+**Current unit (2026-10-15):** replacement iSC5 (old camera UART RX failed).  
+MAC `34:CE:00:D3:85:7D` · DHCP `192.168.187.215` on SSID `GC DPI` · fanghacks SD reused from previous unit · host UART **`/dev/ttyS0`** (CN25 UART0).
+
+Update `LOCALCAM_HOST` in `firmware/private/cam_creds.env` if DHCP changes. Previous placeholder was `192.168.187.180`.
 
 | Check | Expect |
 |-------|--------|
@@ -41,8 +44,11 @@ Last known address: `192.168.187.180` (verify; DHCP may change).
 | TCP 8554 | MJPEG RTSP `/mjpeg` |
 | TCP 8000 | ONVIF |
 | UDP 3702 | WS-Discovery (often unreliable from host) |
+| Serial | `LOCALCAM_SERIAL=/dev/ttyS0` · 115200 8N1 |
 
 Credentials: `firmware/private/cam_creds.env` (gitignored). Copy from the old host’s private tree — do not paste into chat.
+
+Wi‑Fi config lives at `/media/mmcblk0p1/lc/etc/wifi.conf` (paths.sh prefers `p1/lc` over `p2/data/localcam`). Boot hook: `firmware/overlay/sd_test/fang_scripts/99-localcam` → SD `…/etc/scripts/99-localcam`.
 
 ## Serial on Bolt V8 (do not reuse Curie assumptions)
 

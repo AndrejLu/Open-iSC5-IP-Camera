@@ -1,0 +1,50 @@
+#!/bin/sh
+# Fanghacks startup: LocalCam Wi-Fi + services (SD overlay).
+# Installed as /media/mmcblk0p2/data/etc/scripts/99-localcam
+
+LC_BIN=""
+for d in \
+  /media/mmcblk0p2/data/localcam/bin \
+  /media/mmcblk1p2/data/localcam/bin \
+  /media/mmcblk0p1/lc/bin \
+  /media/mmcblk1p1/lc/bin
+do
+  if [ -x "$d/wifi-manager.sh" ]; then
+    LC_BIN=$d
+    break
+  fi
+done
+
+[ -n "$LC_BIN" ] || {
+  echo "99-localcam: no LocalCam bin found" >> /tmp/hacks.log
+  exit 0
+}
+
+echo "$(date) - 99-localcam: starting from $LC_BIN" >> /tmp/hacks.log
+
+# Let fang 01-network / stock WPA settle, then take over
+sleep 5
+killall wpa_supplicant udhcpc hostapd udhcpd 2>/dev/null || true
+sleep 1
+
+sh "$LC_BIN/wifi-manager.sh" start >> /tmp/localcam-boot.log 2>&1 &
+# Wait briefly for STA/AP before media services
+n=0
+while [ "$n" -lt 40 ]; do
+  st=$(cat /tmp/localcam/wifi.state 2>/dev/null || true)
+  case "$st" in
+    station|setup-ap|fallback-ap) break ;;
+  esac
+  n=$((n + 1))
+  sleep 1
+done
+
+st=$(cat /tmp/localcam/wifi.state 2>/dev/null || true)
+if [ "$st" = "station" ]; then
+  sh "$LC_BIN/services.sh" start >> /tmp/localcam-boot.log 2>&1 &
+  if [ -x "$LC_BIN/httpd.sh" ]; then
+    sh "$LC_BIN/httpd.sh" start >> /tmp/localcam-boot.log 2>&1 &
+  fi
+fi
+
+exit 0

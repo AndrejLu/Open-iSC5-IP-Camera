@@ -1,10 +1,16 @@
 # Hardware test log
 
 ## Environment
+- Host: **UDOO Bolt V8** (`udoo-bolt`), serial **`/dev/ttyS0`** (CN25 UART0, 3.3 V) — see `docs/BOLT_MIGRATION.md`
+- Camera: replacement iSC5 (prior unit UART RX failed) + same fanghacks SD (`mmcblk0`)
+- MAC `34:CE:00:D3:85:7D` · LAN `192.168.187.215` on **GC DPI** (DHCP)
+- Updated: 2026-10-15 (Bolt bring-up)
+
+### Prior lab (UDOO X86)
 - Host: UDOO X86, serial `/dev/serial/by-id/usb-UDOO_UDOO_X86__<BOARD_SERIAL>-if00`
-- Camera: iSC5 + fanghacks SD (`mmcblk1` while seated)
+- Camera: original iSC5 + fanghacks SD
 - LAN: `192.168.1.50` on **<HOME_SSID>**
-- Updated: 2026-10-13
+- Dated: 2026-10-13
 
 ## Wi-Fi AP / portal / fallback
 | Test | Result | Evidence |
